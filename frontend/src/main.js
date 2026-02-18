@@ -9,6 +9,10 @@ import LogSearch from './components/LogSearch.vue'
 import LogStream from './components/LogStream.vue'
 import LoginPage from './components/LoginPage.vue'
 import UserList from './components/UserList.vue'
+import AuditLogs from './views/AuditLogs.vue'
+import LoginHistory from './views/LoginHistory.vue'
+import SystemEvents from './views/SystemEvents.vue'
+import ComplianceReports from './views/ComplianceReports.vue'
 
 // Auth guard
 const requireAuth = (to, from, next) => {
@@ -29,7 +33,11 @@ const routes = [
   { path: '/alerts', component: AlertPanel, beforeEnter: requireAuth },
   { path: '/logs', component: LogSearch, beforeEnter: requireAuth },
   { path: '/logs/stream', component: LogStream, beforeEnter: requireAuth },
-  { path: '/users', component: UserList, beforeEnter: requireAuth }
+  { path: '/users', component: UserList, beforeEnter: requireAuth },
+  { path: '/audit/operations', component: AuditLogs, beforeEnter: requireAuth },
+  { path: '/audit/login-history', component: LoginHistory, beforeEnter: requireAuth },
+  { path: '/audit/system-events', component: SystemEvents, beforeEnter: requireAuth },
+  { path: '/audit/reports', component: ComplianceReports, beforeEnter: requireAuth }
 ]
 
 const router = createRouter({

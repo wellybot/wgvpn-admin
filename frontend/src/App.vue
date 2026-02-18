@@ -2,7 +2,8 @@
   <div id="app">
     <nav class="navbar">
       <div class="nav-brand">
-        <span class="logo">🔒</span>        <span class="title">WireGuard VPN Admin</span>
+        <span class="logo">🔒</span>
+        <span class="title">WireGuard VPN Admin</span>
       </div>
       <div class="nav-links">
         <router-link to="/traffic" class="nav-link">
@@ -26,7 +27,23 @@
         <router-link to="/users" class="nav-link">
           👥 用戶管理
         </router-link>
-        <span class="nav-link disabled">📈 報表</span>
+        <div class="nav-dropdown">
+          <span class="nav-link dropdown-toggle">📋 稽查記錄</span>
+          <div class="dropdown-menu">
+            <router-link to="/audit/operations" class="dropdown-item">
+              管理員操作日誌
+            </router-link>
+            <router-link to="/audit/login-history" class="dropdown-item">
+              登入紀錄
+            </router-link>
+            <router-link to="/audit/system-events" class="dropdown-item">
+              系統事件稽核
+            </router-link>
+            <router-link to="/audit/reports" class="dropdown-item">
+              合規報告產生
+            </router-link>
+          </div>
+        </div>
         <button v-if="isLoggedIn" @click="logout" class="logout-btn">
           🚪 登出
         </button>
@@ -130,6 +147,51 @@ body {
 .nav-link.disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.nav-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-toggle {
+  cursor: pointer;
+}
+
+.dropdown-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: white;
+  min-width: 180px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  overflow: hidden;
+  z-index: 1000;
+}
+
+.nav-dropdown:hover .dropdown-menu {
+  display: block;
+}
+
+.dropdown-item {
+  display: block;
+  padding: 10px 16px;
+  color: #666;
+  text-decoration: none;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.dropdown-item:hover {
+  background: #f0f0f0;
+  color: #2c3e50;
+}
+
+.dropdown-item.router-link-active {
+  background: #e8f4fd;
+  color: #3498db;
 }
 
 .logout-btn {

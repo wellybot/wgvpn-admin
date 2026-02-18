@@ -818,5 +818,426 @@ def create_audit_log(user_id: int, action: str, details: str = None, ip_address:
     conn.commit()
     conn.close()
 
+# ============== Audit Records Functions ==============
+
+def get_audit_logs(
+    user_id: int = None,
+    action: str = None,
+    start_date: str = None,
+    end_date: str = None,
+    limit: int = 100,
+    offset: int = 0
+):
+    """
+    Get audit logs with optional filtering
+    """
+    conn = get_db_connection()
+    
+    query = """SELECT al.*, u.username, u.email
+               FROM audit_logs al 
+               LEFT JOIN users u ON al.user_id = u.id 
+               WHERE 1=1"""
+    params = []
+    
+    if user_id:
+        query += " AND al.user_id = ?"
+        params.append(user_id)
+    
+    if action:
+        query += " AND al.action = ?"
+        params.append(action)
+    
+    if start_date:
+        query += " AND DATE(al.created_at) >= ?"
+        params.append(start_date)
+    
+    if end_date:
+        query += " AND DATE(al.created_at) <= ?"
+        params.append(end_date)
+    
+    query += " ORDER BY al.created_at DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    
+    cursor = conn.execute(query, params)
+    rows = cursor.fetchall()
+    
+    # Get total count
+    count_query = "SELECT COUNT(*) as count FROM audit_logs al WHERE 1=1"
+    count_params = []
+    if user_id:
+        count_query += " AND al.user_id = ?"
+        count_params.append(user_id)
+    if action:
+        count_query += " AND al.action = ?"
+        count_params.append(action)
+    if start_date:
+        count_query += " AND DATE(al.created_at) >= ?"
+        count_params.append(start_date)
+    if end_date:
+        count_query += " AND DATE(al.created_at) <= ?"
+        count_params.append(end_date)
+    
+    count_cursor = conn.execute(count_query, count_params)
+    total_count = count_cursor.fetchone()['count']
+    
+    conn.close()
+    return {
+        'logs': [dict(row) for row in rows],
+        'total': total_count,
+        'limit': limit,
+        'offset': offset
+    }
+
+def get_distinct_audit_actions():
+    """Get list of distinct audit action types"""
+    conn = get_db_connection()
+    cursor = conn.execute("SELECT DISTINCT action FROM audit_logs ORDER BY action")
+    rows = cursor.fetchall()
+    conn.close()
+    return [row['action'] for row in rows]
+
+# ============== Login History Functions ==============
+
+def log_login_attempt(user_id: int, username: str, ip_address: str, user_agent: str, success: bool, failure_reason: str = None):
+    """Log a login attempt"""
+    conn = get_db_connection()
+    conn.execute(
+        """INSERT INTO login_history (user_id, username, ip_address, user_agent, success, failure_reason, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
+        (user_id, username, ip_address, user_agent, 1 if success else 0, failure_reason)
+    )
+    conn.commit()
+    conn.close()
+
+def get_login_history(
+    user_id: int = None,
+    success: bool = None,
+    start_date: str = None,
+    end_date: str = None,
+    limit: int = 100,
+    offset: int = 0
+):
+    """
+    Get login history with optional filtering
+    """
+    conn = get_db_connection()
+    
+    query = """SELECT lh.*, u.email
+               FROM login_history lh 
+               LEFT JOIN users u ON lh.user_id = u.id 
+               WHERE 1=1"""
+    params = []
+    
+    if user_id:
+        query += " AND lh.user_id = ?"
+        params.append(user_id)
+    
+    if success is not None:
+        query += " AND lh.success = ?"
+        params.append(1 if success else 0)
+    
+    if start_date:
+        query += " AND DATE(lh.created_at) >= ?"
+        params.append(start_date)
+    
+    if end_date:
+        query += " AND DATE(lh.created_at) <= ?"
+        params.append(end_date)
+    
+    query += " ORDER BY lh.created_at DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    
+    cursor = conn.execute(query, params)
+    rows = cursor.fetchall()
+    
+    # Get total count
+    count_query = "SELECT COUNT(*) as count FROM login_history lh WHERE 1=1"
+    count_params = []
+    if user_id:
+        count_query += " AND lh.user_id = ?"
+        count_params.append(user_id)
+    if success is not None:
+        count_query += " AND lh.success = ?"
+        count_params.append(1 if success else 0)
+    if start_date:
+        count_query += " AND DATE(lh.created_at) >= ?"
+        count_params.append(start_date)
+    if end_date:
+        count_query += " AND DATE(lh.created_at) <= ?"
+        count_params.append(end_date)
+    
+    count_cursor = conn.execute(count_query, count_params)
+    total_count = count_cursor.fetchone()['count']
+    
+    conn.close()
+    return {
+        'logs': [dict(row) for row in rows],
+        'total': total_count,
+        'limit': limit,
+        'offset': offset
+    }
+
+# ============== System Events Functions ==============
+
+def log_system_event(event_type: str, severity: str, message: str, details: str = None, source: str = None):
+    """Log a system event"""
+    conn = get_db_connection()
+    conn.execute(
+        """INSERT INTO system_events (event_type, severity, message, details, source, created_at)
+           VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
+        (event_type, severity, message, details, source)
+    )
+    conn.commit()
+    conn.close()
+
+def get_system_events(
+    event_type: str = None,
+    severity: str = None,
+    start_date: str = None,
+    end_date: str = None,
+    limit: int = 100,
+    offset: int = 0
+):
+    """
+    Get system events with optional filtering
+    """
+    conn = get_db_connection()
+    
+    query = """SELECT * FROM system_events WHERE 1=1"""
+    params = []
+    
+    if event_type:
+        query += " AND event_type = ?"
+        params.append(event_type)
+    
+    if severity:
+        query += " AND severity = ?"
+        params.append(severity)
+    
+    if start_date:
+        query += " AND DATE(created_at) >= ?"
+        params.append(start_date)
+    
+    if end_date:
+        query += " AND DATE(created_at) <= ?"
+        params.append(end_date)
+    
+    query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    
+    cursor = conn.execute(query, params)
+    rows = cursor.fetchall()
+    
+    # Get total count
+    count_query = "SELECT COUNT(*) as count FROM system_events WHERE 1=1"
+    count_params = []
+    if event_type:
+        count_query += " AND event_type = ?"
+        count_params.append(event_type)
+    if severity:
+        count_query += " AND severity = ?"
+        count_params.append(severity)
+    if start_date:
+        count_query += " AND DATE(created_at) >= ?"
+        count_params.append(start_date)
+    if end_date:
+        count_query += " AND DATE(created_at) <= ?"
+        count_params.append(end_date)
+    
+    count_cursor = conn.execute(count_query, count_params)
+    total_count = count_cursor.fetchone()['count']
+    
+    conn.close()
+    return {
+        'events': [dict(row) for row in rows],
+        'total': total_count,
+        'limit': limit,
+        'offset': offset
+    }
+
+def get_distinct_event_types():
+    """Get list of distinct event types"""
+    conn = get_db_connection()
+    cursor = conn.execute("SELECT DISTINCT event_type FROM system_events ORDER BY event_type")
+    rows = cursor.fetchall()
+    conn.close()
+    return [row['event_type'] for row in rows]
+
+# ============== Compliance Reports Functions ==============
+
+def create_compliance_report(report_type: str, title: str, start_date: str, end_date: str, created_by: int):
+    """Create a new compliance report record"""
+    conn = get_db_connection()
+    cursor = conn.execute(
+        """INSERT INTO compliance_reports (report_type, title, start_date, end_date, created_by, status, created_at)
+           VALUES (?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP)""",
+        (report_type, title, start_date, end_date, created_by)
+    )
+    conn.commit()
+    report_id = cursor.lastrowid
+    conn.close()
+    return report_id
+
+def update_compliance_report(report_id: int, status: str = None, file_path: str = None):
+    """Update compliance report status"""
+    conn = get_db_connection()
+    if status:
+        conn.execute(
+            """UPDATE compliance_reports SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?""",
+            (status, report_id)
+        )
+    if file_path:
+        conn.execute(
+            """UPDATE compliance_reports SET file_path = ? WHERE id = ?""",
+            (file_path, report_id)
+        )
+    conn.commit()
+    conn.close()
+
+def get_compliance_reports(
+    report_type: str = None,
+    status: str = None,
+    limit: int = 50,
+    offset: int = 0
+):
+    """
+    Get compliance reports with optional filtering
+    """
+    conn = get_db_connection()
+    
+    query = """SELECT cr.*, u.username as created_by_username
+               FROM compliance_reports cr 
+               LEFT JOIN users u ON cr.created_by = u.id 
+               WHERE 1=1"""
+    params = []
+    
+    if report_type:
+        query += " AND cr.report_type = ?"
+        params.append(report_type)
+    
+    if status:
+        query += " AND cr.status = ?"
+        params.append(status)
+    
+    query += " ORDER BY cr.created_at DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    
+    cursor = conn.execute(query, params)
+    rows = cursor.fetchall()
+    
+    # Get total count
+    count_query = "SELECT COUNT(*) as count FROM compliance_reports cr WHERE 1=1"
+    count_params = []
+    if report_type:
+        count_query += " AND cr.report_type = ?"
+        count_params.append(report_type)
+    if status:
+        count_query += " AND cr.status = ?"
+        count_params.append(status)
+    
+    count_cursor = conn.execute(count_query, count_params)
+    total_count = count_cursor.fetchone()['count']
+    
+    conn.close()
+    return {
+        'reports': [dict(row) for row in rows],
+        'total': total_count,
+        'limit': limit,
+        'offset': offset
+    }
+
+def get_compliance_report_by_id(report_id: int):
+    """Get a specific compliance report by ID"""
+    conn = get_db_connection()
+    cursor = conn.execute(
+        """SELECT cr.*, u.username as created_by_username
+           FROM compliance_reports cr 
+           LEFT JOIN users u ON cr.created_by = u.id 
+           WHERE cr.id = ?""",
+        (report_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def generate_compliance_report_data(report_type: str, start_date: str, end_date: str):
+    """Generate compliance report data based on type"""
+    import json
+    
+    report_data = {
+        'report_type': report_type,
+        'period': {'start_date': start_date, 'end_date': end_date},
+        'generated_at': datetime.now().isoformat(),
+        'sections': {}
+    }
+    
+    conn = get_db_connection()
+    
+    # 1. User Activities
+    user_activity_query = """SELECT 
+        u.id, u.username, u.email, u.is_active, u.created_at,
+        COUNT(DISTINCT cl.id) as connection_count,
+        SUM(COALESCE(cl.bytes_received, 0)) as total_received,
+        SUM(COALESCE(cl.bytes_sent, 0)) as total_sent
+    FROM users u
+    LEFT JOIN connection_logs cl ON u.id = cl.user_id 
+        AND DATE(cl.connected_at) >= ? AND DATE(cl.connected_at) <= ?
+    GROUP BY u.id"""
+    
+    cursor = conn.execute(user_activity_query, (start_date, end_date))
+    report_data['sections']['user_activities'] = [dict(row) for row in cursor.fetchall()]
+    
+    # 2. Login Attempts
+    login_query = """SELECT 
+        lh.username, lh.ip_address, lh.success, lh.failure_reason,
+        COUNT(*) as attempt_count,
+        MIN(lh.created_at) as first_attempt,
+        MAX(lh.created_at) as last_attempt
+    FROM login_history lh
+    WHERE DATE(lh.created_at) >= ? AND DATE(lh.created_at) <= ?
+    GROUP BY lh.username, lh.ip_address"""
+    
+    cursor = conn.execute(login_query, (start_date, end_date))
+    report_data['sections']['login_attempts'] = [dict(row) for row in cursor.fetchall()]
+    
+    # 3. Admin Operations
+    admin_query = """SELECT 
+        al.action, al.details, al.ip_address, al.created_at,
+        u.username as admin_username
+    FROM audit_logs al
+    LEFT JOIN users u ON al.user_id = u.id
+    WHERE DATE(al.created_at) >= ? AND DATE(al.created_at) <= ?
+    ORDER BY al.created_at DESC"""
+    
+    cursor = conn.execute(admin_query, (start_date, end_date))
+    report_data['sections']['admin_operations'] = [dict(row) for row in cursor.fetchall()]
+    
+    # 4. System Events
+    system_query = """SELECT 
+        event_type, severity, message, source, created_at,
+        COUNT(*) as event_count
+    FROM system_events
+    WHERE DATE(created_at) >= ? AND DATE(created_at) <= ?
+    GROUP BY event_type, severity
+    ORDER BY created_at DESC"""
+    
+    cursor = conn.execute(system_query, (start_date, end_date))
+    report_data['sections']['system_events'] = [dict(row) for row in cursor.fetchall()]
+    
+    # 5. Summary Statistics
+    summary_query = """SELECT 
+        (SELECT COUNT(*) FROM users WHERE DATE(created_at) >= ? AND DATE(created_at) <= ?) as new_users,
+        (SELECT COUNT(*) FROM connection_logs WHERE DATE(connected_at) >= ? AND DATE(connected_at) <= ?) as total_connections,
+        (SELECT COUNT(*) FROM login_history WHERE success = 1 AND DATE(created_at) >= ? AND DATE(created_at) <= ?) as successful_logins,
+        (SELECT COUNT(*) FROM login_history WHERE success = 0 AND DATE(created_at) >= ? AND DATE(created_at) <= ?) as failed_logins,
+        (SELECT COUNT(*) FROM alerts WHERE DATE(created_at) >= ? AND DATE(created_at) <= ?) as total_alerts"""
+    
+    cursor = conn.execute(summary_query, (start_date, end_date, start_date, end_date, start_date, end_date, start_date, end_date, start_date, end_date))
+    summary = cursor.fetchone()
+    report_data['sections']['summary'] = dict(summary)
+    
+    conn.close()
+    return report_data
+
 if __name__ == "__main__":
     init_db()

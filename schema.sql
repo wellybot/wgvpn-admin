@@ -71,3 +71,42 @@ CREATE TABLE IF NOT EXISTS alerts (
     resolved_at TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
+
+-- Login history records
+CREATE TABLE IF NOT EXISTS login_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    username TEXT,
+    ip_address TEXT,
+    user_agent TEXT,
+    success BOOLEAN DEFAULT 1,
+    failure_reason TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- System event audit
+CREATE TABLE IF NOT EXISTS system_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    message TEXT NOT NULL,
+    details TEXT,
+    source TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Compliance reports
+CREATE TABLE IF NOT EXISTS compliance_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    file_path TEXT,
+    status TEXT DEFAULT 'pending',
+    created_by INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);

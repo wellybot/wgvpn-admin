@@ -605,17 +605,70 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     return payload
 
 @app.post("/api/auth/login")
-async def login(request: LoginRequest):
+async def login(request: LoginRequest, ip_address: str = None, user_agent: str = None):
     """Admin login endpoint"""
     user = database.get_user_by_username(request.username)
+    
+    # Log the login attempt
+    if user:
+        database.log_login_attempt(
+            user_id=user['id'],
+            username=request.username,
+            ip_address=ip_address or 'unknown',
+            user_agent=user_agent or 'unknown',
+            success=False,
+            failure_reason=None
+        )
+    
     if not user:
+        database.log_login_attempt(
+            user_id=None,
+            username=request.username,
+            ip_address=ip_address or 'unknown',
+            user_agent=user_agent or 'unknown',
+            success=False,
+            failure_reason='User not found'
+        )
         raise HTTPException(status_code=401, detail="Invalid username or password")
     
     if not verify_password(request.password, user['password_hash']):
+        database.log_login_attempt(
+            user_id=user['id'],
+            username=request.username,
+            ip_address=ip_address or 'unknown',
+            user_agent=user_agent or 'unknown',
+            success=False,
+            failure_reason='Invalid password'
+        )
         raise HTTPException(status_code=401, detail="Invalid username or password")
     
     if not user['is_active']:
+        database.log_login_attempt(
+            user_id=user['id'],
+            username=request.username,
+            ip_address=ip_address or 'unknown',
+            user_agent=user_agent or 'unknown',
+            success=False,
+            failure_reason='Account disabled'
+        )
         raise HTTPException(status_code=403, detail="Account is disabled")
+    
+    # Successful login - log it
+    database.log_login_attempt(
+        user_id=user['id'],
+        username=request.username,
+        ip_address=ip_address or 'unknown',
+        user_agent=user_agent or 'unknown',
+        success=True
+    )
+    
+    # Create audit log for login
+    database.create_audit_log(
+        user_id=user['id'],
+        action='LOGIN',
+        details=f'User logged in',
+        ip_address=ip_address
+    )
     
     token = generate_jwt_token(user['id'], user['username'])
     
@@ -803,6 +856,14 @@ async def generate_config(user_id: int, current_user: dict = Depends(get_current
         allowed_ips=user.get('allowed_ips', '10.0.0.2/32')
     )
     
+    # Audit log for config generation
+    database.create_audit_log(
+        user_id=current_user['user_id'],
+        action='GENERATE_CONFIG',
+        details=f'Generated new WireGuard config for user {user["username"]} (ID: {user_id})',
+        ip_address=None
+    )
+    
     return {
         'config': config,
         'public_key': public_key,
@@ -923,3 +984,247 @@ async def change_password(user_id: int, request: ChangePasswordRequest, current_
 
 # TODO: Implement API endpoints for:
 # - Reports
+
+# ============== Audit Records Endpoints ==============
+
+@app.get("/api/audit/operations")
+async def get_audit_operations(
+    user_id: int = None,
+    action: str = None,
+    start_date: str = None,
+    end_date: str = None,
+    limit: int = 100,
+    offset: int = 0,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get admin operation logs with filtering
+    """
+    result = database.get_audit_logs(
+        user_id=user_id,
+        action=action,
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
+        offset=offset
+    )
+    return result
+
+@app.get("/api/audit/operations/actions")
+async def get_audit_actions(current_user: dict = Depends(get_current_user)):
+    """Get list of distinct audit action types"""
+    actions = database.get_distinct_audit_actions()
+    return {'actions': actions}
+
+@app.get("/api/audit/login-history")
+async def get_login_history(
+    user_id: int = None,
+    success: bool = None,
+    start_date: str = None,
+    end_date: str = None,
+    limit: int = 100,
+    offset: int = 0,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get login history with filtering
+    """
+    result = database.get_login_history(
+        user_id=user_id,
+        success=success,
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
+        offset=offset
+    )
+    return result
+
+@app.get("/api/audit/system-events")
+async def get_system_events(
+    event_type: str = None,
+    severity: str = None,
+    start_date: str = None,
+    end_date: str = None,
+    limit: int = 100,
+    offset: int = 0,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get system events with filtering
+    """
+    result = database.get_system_events(
+        event_type=event_type,
+        severity=severity,
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
+        offset=offset
+    )
+    return result
+
+@app.get("/api/audit/system-events/types")
+async def get_system_event_types(current_user: dict = Depends(get_current_user)):
+    """Get list of distinct system event types"""
+    event_types = database.get_distinct_event_types()
+    return {'event_types': event_types}
+
+# ============== Compliance Reports Endpoints ==============
+
+class ReportGenerateRequest(BaseModel):
+    report_type: str
+    start_date: str
+    end_date: str
+
+@app.post("/api/audit/reports/generate")
+async def generate_compliance_report(
+    request: ReportGenerateRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Generate a compliance report
+    """
+    # Validate report type
+    valid_types = ['daily', 'weekly', 'monthly', 'custom']
+    if request.report_type not in valid_types:
+        raise HTTPException(status_code=400, detail=f"Invalid report type. Must be one of: {', '.join(valid_types)}")
+    
+    # Create report record
+    report_id = database.create_compliance_report(
+        report_type=request.report_type,
+        title=f"Compliance Report - {request.report_type.title()} ({request.start_date} to {request.end_date})",
+        start_date=request.start_date,
+        end_date=request.end_date,
+        created_by=current_user['user_id']
+    )
+    
+    # Generate report data
+    report_data = database.generate_compliance_report_data(
+        report_type=request.report_type,
+        start_date=request.start_date,
+        end_date=request.end_date
+    )
+    
+    # Update report status
+    import json
+    database.update_compliance_report(report_id, status='completed')
+    
+    # Log system event
+    database.log_system_event(
+        event_type='report_generated',
+        severity='info',
+        message=f"Compliance report generated: {request.report_type}",
+        details=f"Report ID: {report_id}, Period: {request.start_date} to {request.end_date}",
+        source='api'
+    )
+    
+    return {
+        'report_id': report_id,
+        'status': 'completed',
+        'data': report_data
+    }
+
+@app.get("/api/audit/reports")
+async def get_compliance_reports(
+    report_type: str = None,
+    status: str = None,
+    limit: int = 50,
+    offset: int = 0,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get list of generated compliance reports
+    """
+    result = database.get_compliance_reports(
+        report_type=report_type,
+        status=status,
+        limit=limit,
+        offset=offset
+    )
+    return result
+
+@app.get("/api/audit/reports/{report_id}")
+async def get_compliance_report(
+    report_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get a specific compliance report
+    """
+    report = database.get_compliance_report_by_id(report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return report
+
+@app.get("/api/audit/reports/{report_id}/download")
+async def download_compliance_report(
+    report_id: int,
+    format: str = 'json',
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Download a compliance report in specified format
+    """
+    report = database.get_compliance_report_by_id(report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    if report['status'] != 'completed':
+        raise HTTPException(status_code=400, detail="Report is not ready for download")
+    
+    # Regenerate data for download
+    report_data = database.generate_compliance_report_data(
+        report_type=report['report_type'],
+        start_date=report['start_date'],
+        end_date=report['end_date']
+    )
+    
+    if format == 'json':
+        import json
+        return {
+            'report': report_data,
+            'filename': f"compliance_report_{report_id}.json"
+        }
+    else:
+        # CSV format - flatten the data
+        import csv
+        import io
+        
+        output = io.StringIO()
+        
+        if report_data.get('sections', {}).get('user_activities'):
+            output.write("=== User Activities ===\n")
+            writer = csv.DictWriter(output, fieldnames=report_data['sections']['user_activities'][0].keys() if report_data['sections']['user_activities'] else [])
+            writer.writeheader()
+            writer.writerows(report_data['sections']['user_activities'])
+            output.write("\n")
+        
+        if report_data.get('sections', {}).get('login_attempts'):
+            output.write("=== Login Attempts ===\n")
+            writer = csv.DictWriter(output, fieldnames=report_data['sections']['login_attempts'][0].keys() if report_data['sections']['login_attempts'] else [])
+            writer.writeheader()
+            writer.writerows(report_data['sections']['login_attempts'])
+            output.write("\n")
+        
+        if report_data.get('sections', {}).get('admin_operations'):
+            output.write("=== Admin Operations ===\n")
+            writer = csv.DictWriter(output, fieldnames=report_data['sections']['admin_operations'][0].keys() if report_data['sections']['admin_operations'] else [])
+            writer.writeheader()
+            writer.writerows(report_data['sections']['admin_operations'])
+            output.write("\n")
+        
+        if report_data.get('sections', {}).get('system_events'):
+            output.write("=== System Events ===\n")
+            writer = csv.DictWriter(output, fieldnames=report_data['sections']['system_events'][0].keys() if report_data['sections']['system_events'] else [])
+            writer.writeheader()
+            writer.writerows(report_data['sections']['system_events'])
+            output.write("\n")
+        
+        if report_data.get('sections', {}).get('summary'):
+            output.write("=== Summary ===\n")
+            for key, value in report_data['sections']['summary'].items():
+                output.write(f"{key}: {value}\n")
+        
+        return {
+            'data': output.getvalue(),
+            'filename': f"compliance_report_{report_id}.csv"
+        }
