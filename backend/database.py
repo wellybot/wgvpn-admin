@@ -308,5 +308,322 @@ def format_bytes(bytes_val: int) -> str:
         bytes_val /= 1024.0
     return f"{bytes_val:.2f} PB"
 
+# ============== Connection Logs Functions ==============
+
+def log_connection(user_id: int, peer_ip: str = None, public_key: str = None):
+    """Log a new connection event"""
+    conn = get_db_connection()
+    cursor = conn.execute(
+        """INSERT INTO connection_logs (user_id, peer_ip, connected_at)
+           VALUES (?, ?, CURRENT_TIMESTAMP)""",
+        (user_id, peer_ip)
+    )
+    conn.commit()
+    connection_id = cursor.lastrowid
+    
+    # Also create audit log
+    conn.execute(
+        """INSERT INTO audit_logs (user_id, action, details, created_at)
+           VALUES (?, ?, ?, CURRENT_TIMESTAMP)""",
+        (user_id, 'connection', f'User connected from {peer_ip or "unknown"}')
+    )
+    conn.commit()
+    conn.close()
+    return connection_id
+
+def update_connection_disconnect(connection_id: int, bytes_received: int = 0, bytes_sent: int = 0):
+    """Update connection with disconnect time and final bytes"""
+    conn = get_db_connection()
+    conn.execute(
+        """UPDATE connection_logs 
+           SET disconnected_at = CURRENT_TIMESTAMP, 
+               bytes_received = ?, 
+               bytes_sent = ?
+           WHERE id = ?""",
+        (bytes_received, bytes_sent, connection_id)
+    )
+    conn.commit()
+    conn.close()
+
+def get_connection_logs(
+    user_id: int = None,
+    start_date: str = None,
+    end_date: str = None,
+    connection_status: str = None,
+    limit: int = 100,
+    offset: int = 0
+):
+    """
+    Get connection logs with optional filtering
+    connection_status: 'connected' (no disconnected_at) or 'disconnected'
+    """
+    conn = get_db_connection()
+    
+    query = """SELECT cl.*, u.username, u.email,
+               (julianday(COALESCE(cl.disconnected_at, 'now')) - julianday(cl.connected_at)) * 86400 as duration_seconds
+               FROM connection_logs cl 
+               JOIN users u ON cl.user_id = u.id 
+               WHERE 1=1"""
+    params = []
+    
+    if user_id:
+        query += " AND cl.user_id = ?"
+        params.append(user_id)
+    
+    if start_date:
+        query += " AND DATE(cl.connected_at) >= ?"
+        params.append(start_date)
+    
+    if end_date:
+        query += " AND DATE(cl.connected_at) <= ?"
+        params.append(end_date)
+    
+    if connection_status == 'connected':
+        query += " AND cl.disconnected_at IS NULL"
+    elif connection_status == 'disconnected':
+        query += " AND cl.disconnected_at IS NOT NULL"
+    
+    query += " ORDER BY cl.connected_at DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    
+    cursor = conn.execute(query, params)
+    rows = cursor.fetchall()
+    
+    # Get total count for pagination
+    count_query = "SELECT COUNT(*) as count FROM connection_logs cl WHERE 1=1"
+    count_params = []
+    if user_id:
+        count_query += " AND cl.user_id = ?"
+        count_params.append(user_id)
+    if start_date:
+        count_query += " AND DATE(cl.connected_at) >= ?"
+        count_params.append(start_date)
+    if end_date:
+        count_query += " AND DATE(cl.connected_at) <= ?"
+        count_params.append(end_date)
+    if connection_status == 'connected':
+        count_query += " AND cl.disconnected_at IS NULL"
+    elif connection_status == 'disconnected':
+        count_query += " AND cl.disconnected_at IS NOT NULL"
+    
+    count_cursor = conn.execute(count_query, count_params)
+    total_count = count_cursor.fetchone()['count']
+    
+    conn.close()
+    return {
+        'logs': [dict(row) for row in rows],
+        'total': total_count,
+        'limit': limit,
+        'offset': offset
+    }
+
+def get_active_connections():
+    """Get all currently active connections (not disconnected)"""
+    conn = get_db_connection()
+    cursor = conn.execute(
+        """SELECT cl.*, u.username, u.email, u.public_key
+           FROM connection_logs cl 
+           JOIN users u ON cl.user_id = u.id 
+           WHERE cl.disconnected_at IS NULL
+           ORDER BY cl.connected_at DESC"""
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def close_stale_connections():
+    """Close connections that don't have disconnect time (cleanup)"""
+    conn = get_db_connection()
+    # Close any connections older than 24 hours that are still open
+    conn.execute(
+        """UPDATE connection_logs 
+           SET disconnected_at = CURRENT_TIMESTAMP
+           WHERE disconnected_at IS NULL 
+           AND connected_at < DATETIME('now', '-24 hours')"""
+    )
+    conn.commit()
+    conn.close()
+
+# ============== Search & Export Functions ==============
+
+def search_logs(
+    keyword: str = None,
+    log_type: str = None,  # 'connection', 'traffic', 'alert', 'audit'
+    user_id: int = None,
+    start_date: str = None,
+    end_date: str = None,
+    limit: int = 100,
+    offset: int = 0
+):
+    """
+    Full-text search across all log types
+    """
+    results = []
+    
+    # Search connection logs
+    if log_type is None or log_type == 'connection':
+        conn = get_db_connection()
+        query = """SELECT cl.*, u.username, 'connection' as log_type
+                   FROM connection_logs cl 
+                   JOIN users u ON cl.user_id = u.id 
+                   WHERE 1=1"""
+        params = []
+        
+        if keyword:
+            query += " AND (u.username LIKE ? OR cl.peer_ip LIKE ?)"
+            params.extend([f'%{keyword}%', f'%{keyword}%'])
+        if user_id:
+            query += " AND cl.user_id = ?"
+            params.append(user_id)
+        if start_date:
+            query += " AND DATE(cl.connected_at) >= ?"
+            params.append(start_date)
+        if end_date:
+            query += " AND DATE(cl.connected_at) <= ?"
+            params.append(end_date)
+        
+        query += " ORDER BY cl.connected_at DESC LIMIT ?"
+        params.append(limit)
+        
+        cursor = conn.execute(query, params)
+        rows = cursor.fetchall()
+        results.extend([dict(row) for row in rows])
+        conn.close()
+    
+    # Search traffic logs
+    if log_type is None or log_type == 'traffic':
+        conn = get_db_connection()
+        query = """SELECT tl.*, u.username, 'traffic' as log_type
+                   FROM traffic_logs tl 
+                   JOIN users u ON tl.user_id = u.id 
+                   WHERE 1=1"""
+        params = []
+        
+        if keyword:
+            query += " AND (u.username LIKE ? OR tl.peer_public_key LIKE ?)"
+            params.extend([f'%{keyword}%', f'%{keyword}%'])
+        if user_id:
+            query += " AND tl.user_id = ?"
+            params.append(user_id)
+        if start_date:
+            query += " AND DATE(tl.snapshot_time) >= ?"
+            params.append(start_date)
+        if end_date:
+            query += " AND DATE(tl.snapshot_time) <= ?"
+            params.append(end_date)
+        
+        query += " ORDER BY tl.snapshot_time DESC LIMIT ?"
+        params.append(limit)
+        
+        cursor = conn.execute(query, params)
+        rows = cursor.fetchall()
+        results.extend([dict(row) for row in rows])
+        conn.close()
+    
+    # Search alerts
+    if log_type is None or log_type == 'alert':
+        conn = get_db_connection()
+        query = """SELECT a.*, u.username, 'alert' as log_type
+                   FROM alerts a 
+                   LEFT JOIN users u ON a.user_id = u.id 
+                   WHERE 1=1"""
+        params = []
+        
+        if keyword:
+            query += " AND (a.message LIKE ? OR a.alert_type LIKE ?)"
+            params.append(f'%{keyword}%')
+        if user_id:
+            query += " AND a.user_id = ?"
+            params.append(user_id)
+        if start_date:
+            query += " AND DATE(a.created_at) >= ?"
+            params.append(start_date)
+        if end_date:
+            query += " AND DATE(a.created_at) <= ?"
+            params.append(end_date)
+        
+        query += " ORDER BY a.created_at DESC LIMIT ?"
+        params.append(limit)
+        
+        cursor = conn.execute(query, params)
+        rows = cursor.fetchall()
+        results.extend([dict(row) for row in rows])
+        conn.close()
+    
+    # Search audit logs
+    if log_type is None or log_type == 'audit':
+        conn = get_db_connection()
+        query = """SELECT al.*, u.username, 'audit' as log_type
+                   FROM audit_logs al 
+                   LEFT JOIN users u ON al.user_id = u.id 
+                   WHERE 1=1"""
+        params = []
+        
+        if keyword:
+            query += " AND (al.action LIKE ? OR al.details LIKE ?)"
+            params.extend([f'%{keyword}%', f'%{keyword}%'])
+        if user_id:
+            query += " AND al.user_id = ?"
+            params.append(user_id)
+        if start_date:
+            query += " AND DATE(al.created_at) >= ?"
+            params.append(start_date)
+        if end_date:
+            query += " AND DATE(al.created_at) <= ?"
+            params.append(end_date)
+        
+        query += " ORDER BY al.created_at DESC LIMIT ?"
+        params.append(limit)
+        
+        cursor = conn.execute(query, params)
+        rows = cursor.fetchall()
+        results.extend([dict(row) for row in rows])
+        conn.close()
+    
+    # Sort all results by date
+    results.sort(key=lambda x: x.get('connected_at') or x.get('snapshot_time') or x.get('created_at', ''), reverse=True)
+    
+    # Apply offset and limit
+    paginated_results = results[offset:offset + limit]
+    
+    return {
+        'logs': paginated_results,
+        'total': len(results),
+        'limit': limit,
+        'offset': offset
+    }
+
+def get_logs_for_export(
+    log_type: str = None,
+    user_id: int = None,
+    start_date: str = None,
+    end_date: str = None,
+    format: str = 'csv'
+):
+    """
+    Get all logs for export (no pagination limit)
+    """
+    logs = search_logs(
+        keyword=None,
+        log_type=log_type,
+        user_id=user_id,
+        start_date=start_date,
+        end_date=end_date,
+        limit=10000,
+        offset=0
+    )
+    return logs['logs']
+
+def create_audit_log(user_id: int, action: str, details: str = None, ip_address: str = None):
+    """Create an audit log entry"""
+    conn = get_db_connection()
+    conn.execute(
+        """INSERT INTO audit_logs (user_id, action, details, ip_address, created_at)
+           VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)""",
+        (user_id, action, details, ip_address)
+    )
+    conn.commit()
+    conn.close()
+
 if __name__ == "__main__":
     init_db()

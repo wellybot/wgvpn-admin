@@ -17,8 +17,13 @@
         <router-link to="/alerts" class="nav-link">
           🔔 異常警示
         </router-link>
+        <router-link to="/logs" class="nav-link">
+          📝 日誌搜尋
+        </router-link>
+        <router-link to="/logs/stream" class="nav-link">
+          📡 即時串流
+        </router-link>
         <span class="nav-link disabled">👥 用戶管理</span>
-        <span class="nav-link disabled">📝 日誌</span>
         <span class="nav-link disabled">📈 報表</span>
       </div>
     </nav>

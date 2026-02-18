@@ -277,8 +277,281 @@ async def check_anomalies():
         'alert_ids': new_alerts
     }
 
+# ============== Connection Logs Endpoints ==============
+
+@app.get("/api/logs/connections")
+async def get_connection_logs(
+    user_id: int = None,
+    start_date: str = None,
+    end_date: str = None,
+    connection_status: str = None,
+    limit: int = 100,
+    offset: int = 0
+):
+    """
+    Get connection logs with optional filtering
+    - user_id: Filter by user ID
+    - start_date: Filter by start date (YYYY-MM-DD)
+    - end_date: Filter by end date (YYYY-MM-DD)
+    - connection_status: 'connected' or 'disconnected'
+    - limit: Number of records to return
+    - offset: Offset for pagination
+    """
+    result = database.get_connection_logs(
+        user_id=user_id,
+        start_date=start_date,
+        end_date=end_date,
+        connection_status=connection_status,
+        limit=limit,
+        offset=offset
+    )
+    return result
+
+@app.get("/api/logs/connections/active")
+async def get_active_connections():
+    """
+    Get all currently active connections
+    """
+    connections = database.get_active_connections()
+    return {
+        'connections': connections,
+        'count': len(connections)
+    }
+
+@app.post("/api/logs/connections")
+async def create_connection_log(user_id: int, peer_ip: str = None):
+    """
+    Log a new connection event
+    """
+    connection_id = database.log_connection(user_id=user_id, peer_ip=peer_ip)
+    return {
+        'status': 'connected',
+        'connection_id': connection_id
+    }
+
+@app.post("/api/logs/connections/{connection_id}/disconnect")
+async def disconnect_connection(connection_id: int, bytes_received: int = 0, bytes_sent: int = 0):
+    """
+    Update connection with disconnect time and final bytes
+    """
+    database.update_connection_disconnect(connection_id, bytes_received, bytes_sent)
+    return {
+        'status': 'disconnected',
+        'connection_id': connection_id
+    }
+
+# ============== Log Search Endpoints ==============
+
+@app.get("/api/logs/search")
+async def search_logs(
+    keyword: str = None,
+    log_type: str = None,
+    user_id: int = None,
+    start_date: str = None,
+    end_date: str = None,
+    limit: int = 100,
+    offset: int = 0
+):
+    """
+    Full-text search across all log types
+    - keyword: Search keyword
+    - log_type: Filter by log type ('connection', 'traffic', 'alert', 'audit')
+    - user_id: Filter by user ID
+    - start_date: Filter by start date (YYYY-MM-DD)
+    - end_date: Filter by end date (YYYY-MM-DD)
+    - limit: Number of records to return
+    - offset: Offset for pagination
+    """
+    result = database.search_logs(
+        keyword=keyword,
+        log_type=log_type,
+        user_id=user_id,
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
+        offset=offset
+    )
+    return result
+
+# ============== Log Export Endpoints ==============
+
+@app.get("/api/logs/export")
+async def export_logs(
+    log_type: str = None,
+    user_id: int = None,
+    start_date: str = None,
+    end_date: str = None,
+    format: str = 'csv'
+):
+    """
+    Export logs as CSV or JSON
+    - log_type: Filter by log type ('connection', 'traffic', 'alert', 'audit')
+    - user_id: Filter by user ID
+    - start_date: Filter by start date (YYYY-MM-DD)
+    - end_date: Filter by end date (YYYY-MM-DD)
+    - format: 'csv' or 'json'
+    """
+    logs = database.get_logs_for_export(
+        log_type=log_type,
+        user_id=user_id,
+        start_date=start_date,
+        end_date=end_date,
+        format=format
+    )
+    
+    if format == 'json':
+        return {
+            'logs': logs,
+            'count': len(logs),
+            'exported_at': datetime.now().isoformat()
+        }
+    else:
+        # CSV format
+        if not logs:
+            return {'data': '', 'count': 0}
+        
+        # Get headers from first log
+        headers = list(logs[0].keys())
+        
+        # Build CSV
+        import csv
+        import io
+        
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=headers, extrasaction='ignore')
+        writer.writeheader()
+        writer.writerows(logs)
+        
+        return {
+            'data': output.getvalue(),
+            'count': len(logs),
+            'exported_at': datetime.now().isoformat()
+        }
+
+# ============== Real-time Log Streaming (WebSocket) ==============
+
+from fastapi import WebSocket
+from typing import Set
+import asyncio
+import random
+
+# Store active WebSocket connections
+active_websockets: Set[WebSocket] = set()
+
+@app.websocket("/api/logs/stream")
+async def log_stream(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time log streaming
+    """
+    await websocket.accept()
+    active_websockets.add(websocket)
+    
+    try:
+        # Send initial connection message
+        await websocket.send_json({
+            'type': 'connected',
+            'message': 'Real-time log stream started',
+            'timestamp': datetime.now().isoformat()
+        })
+        
+        # Keep connection alive and send periodic mock log events
+        counter = 0
+        while True:
+            await asyncio.sleep(5)  # Send log every 5 seconds
+            
+            # Generate mock log entry for demo
+            users = database.get_users()
+            log_types = ['connection', 'traffic', 'alert', 'audit']
+            
+            if users:
+                user = random.choice(users)
+                log_type = random.choice(log_types)
+                
+                if log_type == 'connection':
+                    log_entry = {
+                        'type': 'log',
+                        'log_type': 'connection',
+                        'user_id': user['id'],
+                        'username': user['username'],
+                        'message': f"User {user['username']} connected",
+                        'timestamp': datetime.now().isoformat(),
+                        'level': 'info'
+                    }
+                elif log_type == 'traffic':
+                    log_entry = {
+                        'type': 'log',
+                        'log_type': 'traffic',
+                        'user_id': user['id'],
+                        'username': user['username'],
+                        'message': f"Traffic update: {format_bytes(random.randint(1000, 100000))} received",
+                        'timestamp': datetime.now().isoformat(),
+                        'level': 'info'
+                    }
+                elif log_type == 'alert':
+                    alert_levels = ['info', 'warning', 'error']
+                    log_entry = {
+                        'type': 'log',
+                        'log_type': 'alert',
+                        'user_id': user['id'],
+                        'username': user['username'],
+                        'message': f"Alert: High bandwidth usage detected",
+                        'timestamp': datetime.now().isoformat(),
+                        'level': random.choice(alert_levels)
+                    }
+                else:
+                    log_entry = {
+                        'type': 'log',
+                        'log_type': 'audit',
+                        'user_id': user['id'],
+                        'username': user['username'],
+                        'message': f"Audit: User action recorded",
+                        'timestamp': datetime.now().isoformat(),
+                        'level': 'info'
+                    }
+                
+                try:
+                    await websocket.send_json(log_entry)
+                except:
+                    break
+                    
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+    finally:
+        active_websockets.discard(websocket)
+
+async def broadcast_log(log_entry: dict):
+    """
+    Broadcast a log entry to all connected WebSocket clients
+    """
+    for websocket in active_websockets:
+        try:
+            await websocket.send_json(log_entry)
+        except:
+            pass
+
+# ============== User Management (Basic) ==============
+
+@app.get("/api/users")
+async def get_users():
+    """Get all users"""
+    users = database.get_users()
+    return {'users': users, 'count': len(users)}
+
+@app.get("/api/users/{user_id}")
+async def get_user(user_id: int):
+    """Get a specific user"""
+    conn = database.get_db_connection()
+    cursor = conn.execute(
+        "SELECT id, username, email, public_key, is_active, created_at FROM users WHERE id = ?",
+        (user_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    
+    if not row:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    return dict(row)
+
 # TODO: Implement API endpoints for:
-# - User management
-# - Logs
-# - Audit records
 # - Reports

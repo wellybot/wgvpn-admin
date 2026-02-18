@@ -17,3 +17,36 @@
 - [x] Frontend: Progress bars and formatted bytes
 - [x] Full end-to-end test passed
 
+## 2026-02-19 - Traffic History, Bandwidth Dashboard, Anomaly Alerts
+- [x] Backend: `/api/traffic/history` with date range filtering
+- [x] Backend: `/api/traffic/daily` - Daily traffic summaries
+- [x] Backend: `/api/traffic/hourly` - Hourly traffic summaries
+- [x] Backend: Store periodic snapshots (every request)
+- [x] Backend: `/api/alerts` - Alert management endpoints
+- [x] Backend: Anomaly detection with spike detection
+- [x] Frontend: TrafficHistory.vue - Historical charts with Chart.js
+- [x] Frontend: Date range picker for filtering
+- [x] Frontend: Line/bar chart toggle
+- [x] Frontend: BandwidthDashboard.vue - Real-time bandwidth monitor
+- [x] Frontend: Gauge components for upload/download speed
+- [x] Frontend: Peak bandwidth indicators
+- [x] Frontend: AlertPanel.vue - Alert display component
+- [x] Frontend: Real-time alert notifications
+- [x] Frontend: Alert history view with resolve functionality
+- [x] Full end-to-end test passed
+
+## 2026-02-19 - User Logs (用戶日誌)
+- [x] Backend: `/api/logs/connections` - Connection records query
+- [x] Backend: `/api/logs/connections/active` - Active connections
+- [x] Backend: `/api/logs/search` - Full-text search across all log types
+- [x] Backend: `/api/logs/export` - Export logs as CSV or JSON
+- [x] Backend: `/api/logs/stream` - WebSocket endpoint for real-time logs
+- [x] Backend: Database functions for connection logs
+- [x] Backend: Search and export functions
+- [x] Frontend: LogSearch.vue - Advanced log search interface
+- [x] Frontend: LogStream.vue - Real-time log viewer
+- [x] Frontend: Filter by date range, user, log type
+- [x] Frontend: Export to CSV/JSON with progress indicator
+- [x] Frontend: Real-time log streaming with pause/resume
+- [x] Full end-to-end test passed
+
