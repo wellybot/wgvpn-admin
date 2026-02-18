@@ -1,0 +1,49 @@
+{
+  "features": [
+    {
+      "category": "流量監控 (Traffic Monitoring)",
+      "items": [
+        "即時流量統計",
+        "流量使用歷史",
+        "頻寬監控儀表板",
+        "流量異常警示"
+      ]
+    },
+    {
+      "category": "用戶日誌 (User Logs)",
+      "items": [
+        "連線記錄查詢",
+        "日誌搜尋與篩選",
+        "日誌匯出功能",
+        "即時日誌串流"
+      ]
+    },
+    {
+      "category": "帳號管理 (Account Management)",
+      "items": [
+        "用戶帳號 CRUD",
+        "VPN 設定產生",
+        "帳號啟用/停用",
+        "密碼管理"
+      ]
+    },
+    {
+      "category": "稽查記錄 (Audit Records)",
+      "items": [
+        "管理員操作日誌",
+        "登入紀錄",
+        "系統事件稽核",
+        "合規報告產生"
+      ]
+    },
+    {
+      "category": "自動化報表 (Automated Reports)",
+      "items": [
+        "定期流量報告",
+        "用戶使用統計",
+        "系統健康報告",
+        "自訂報告範本"
+      ]
+    }
+  ]
+}

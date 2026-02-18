@@ -1,0 +1,9 @@
+# WireGuard VPN Admin - Project Progress
+
+## 2026-02-19 - Initial Setup
+- [x] Project structure created
+- [x] Backend scaffolding (FastAPI)
+- [x] Frontend scaffolding (Vue.js 3 + Vite)
+- [x] Database schema defined
+- [ ] TODO: Implement features
+
