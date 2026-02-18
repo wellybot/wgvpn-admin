@@ -8,6 +8,15 @@
         <router-link to="/traffic" class="nav-link">
           📊 流量監控
         </router-link>
+        <router-link to="/history" class="nav-link">
+          📈 流量歷史
+        </router-link>
+        <router-link to="/bandwidth" class="nav-link">
+          🚀 頻寬監控
+        </router-link>
+        <router-link to="/alerts" class="nav-link">
+          🔔 異常警示
+        </router-link>
         <span class="nav-link disabled">👥 用戶管理</span>
         <span class="nav-link disabled">📝 日誌</span>
         <span class="nav-link disabled">📈 報表</span>

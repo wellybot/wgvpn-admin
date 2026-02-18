@@ -174,12 +174,107 @@ async def get_traffic():
     }
 
 @app.get("/api/traffic/history")
-async def get_traffic_history(limit: int = 100):
-    """Get historical traffic logs"""
-    logs = database.get_recent_traffic_logs(limit)
+async def get_traffic_history(
+    user_id: int = None,
+    start_date: str = None,
+    end_date: str = None,
+    limit: int = 1000
+):
+    """
+    Get historical traffic logs with optional date range filtering
+    """
+    logs = database.get_traffic_history(
+        user_id=user_id,
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit
+    )
     return {
         'logs': logs,
-        'count': len(logs)
+        'count': len(logs),
+        'filters': {
+            'user_id': user_id,
+            'start_date': start_date,
+            'end_date': end_date
+        }
+    }
+
+@app.get("/api/traffic/daily")
+async def get_daily_traffic(days: int = 30, user_id: int = None):
+    """
+    Get daily traffic summaries
+    """
+    summary = database.get_daily_traffic_summary(user_id=user_id, days=days)
+    return {
+        'daily': summary,
+        'count': len(summary),
+        'days': days
+    }
+
+@app.get("/api/traffic/hourly")
+async def get_hourly_traffic(hours: int = 24, user_id: int = None):
+    """
+    Get hourly traffic summaries
+    """
+    summary = database.get_hourly_traffic_summary(user_id=user_id, hours=hours)
+    return {
+        'hourly': summary,
+        'count': len(summary),
+        'hours': hours
+    }
+
+# ============== Alert Endpoints ==============
+
+@app.get("/api/alerts")
+async def get_alerts(
+    user_id: int = None,
+    severity: str = None,
+    is_resolved: bool = None,
+    limit: int = 100
+):
+    """
+    Get alerts with optional filtering
+    """
+    alerts = database.get_alerts(
+        user_id=user_id,
+        severity=severity,
+        is_resolved=is_resolved,
+        limit=limit
+    )
+    return {
+        'alerts': alerts,
+        'count': len(alerts)
+    }
+
+@app.post("/api/alerts/{alert_id}/resolve")
+async def resolve_alert(alert_id: int):
+    """
+    Mark an alert as resolved
+    """
+    database.resolve_alert(alert_id)
+    return {'status': 'resolved', 'alert_id': alert_id}
+
+@app.get("/api/alerts/unresolved")
+async def get_unresolved_alerts():
+    """
+    Get all unresolved alerts
+    """
+    alerts = database.get_unresolved_alerts()
+    return {
+        'alerts': alerts,
+        'count': len(alerts)
+    }
+
+@app.post("/api/alerts/check")
+async def check_anomalies():
+    """
+    Trigger anomaly detection check
+    """
+    new_alerts = database.check_traffic_anomalies()
+    return {
+        'checked': True,
+        'new_alerts': len(new_alerts),
+        'alert_ids': new_alerts
     }
 
 # TODO: Implement API endpoints for:
