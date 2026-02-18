@@ -23,8 +23,13 @@
         <router-link to="/logs/stream" class="nav-link">
           📡 即時串流
         </router-link>
-        <span class="nav-link disabled">👥 用戶管理</span>
+        <router-link to="/users" class="nav-link">
+          👥 用戶管理
+        </router-link>
         <span class="nav-link disabled">📈 報表</span>
+        <button v-if="isLoggedIn" @click="logout" class="logout-btn">
+          🚪 登出
+        </button>
       </div>
     </nav>
     <main class="main-content">
@@ -35,7 +40,19 @@
 
 <script>
 export default {
-  name: 'App'
+  name: 'App',
+  computed: {
+    isLoggedIn() {
+      return !!localStorage.getItem('token')
+    }
+  },
+  methods: {
+    logout() {
+      localStorage.removeItem('token')
+      localStorage.removeItem('user')
+      this.$router.push('/login')
+    }
+  }
 }
 </script>
 
@@ -113,6 +130,23 @@ body {
 .nav-link.disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.logout-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid #e74c3c;
+  color: #e74c3c;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-left: 8px;
+}
+
+.logout-btn:hover {
+  background: #e74c3c;
+  color: white;
 }
 
 .main-content {

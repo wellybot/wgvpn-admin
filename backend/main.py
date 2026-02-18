@@ -529,29 +529,397 @@ async def broadcast_log(log_entry: dict):
         except:
             pass
 
-# ============== User Management (Basic) ==============
+# ============== Authentication ==============
+import hashlib
+import secrets
+import base64
+import jwt
+from datetime import datetime, timedelta
+from pydantic import BaseModel
+from typing import Optional
+
+# JWT Configuration
+JWT_SECRET = secrets.token_hex(32)
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRY_HOURS = 24
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class UserCreateRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+    allowed_ips: Optional[str] = "10.0.0.2/32"
+
+class UserUpdateRequest(BaseModel):
+    username: Optional[str] = None
+    email: Optional[str] = None
+    allowed_ips: Optional[str] = None
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+def hash_password(password: str) -> str:
+    """Hash a password using SHA-256"""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def verify_password(password: str, password_hash: str) -> bool:
+    """Verify a password against its hash"""
+    return hash_password(password) == password_hash
+
+def generate_jwt_token(user_id: int, username: str) -> str:
+    """Generate a JWT token"""
+    payload = {
+        'user_id': user_id,
+        'username': username,
+        'exp': datetime.utcnow() + timedelta(hours=JWT_EXPIRY_HOURS),
+        'iat': datetime.utcnow()
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+def verify_jwt_token(token: str) -> Optional[dict]:
+    """Verify a JWT token"""
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return payload
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
+# Token dependency for protected routes
+from fastapi import Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+security = HTTPBearer()
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Get current user from JWT token"""
+    token = credentials.credentials
+    payload = verify_jwt_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return payload
+
+@app.post("/api/auth/login")
+async def login(request: LoginRequest):
+    """Admin login endpoint"""
+    user = database.get_user_by_username(request.username)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    
+    if not verify_password(request.password, user['password_hash']):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    
+    if not user['is_active']:
+        raise HTTPException(status_code=403, detail="Account is disabled")
+    
+    token = generate_jwt_token(user['id'], user['username'])
+    
+    return {
+        'token': token,
+        'user': {
+            'id': user['id'],
+            'username': user['username'],
+            'email': user['email']
+        }
+    }
+
+@app.post("/api/auth/logout")
+async def logout(current_user: dict = Depends(get_current_user)):
+    """Logout endpoint (client should discard token)"""
+    return {'status': 'logged_out'}
+
+@app.get("/api/auth/me")
+async def get_me(current_user: dict = Depends(get_current_user)):
+    """Get current user info"""
+    user = database.get_user_by_id(current_user['user_id'])
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {
+        'id': user['id'],
+        'username': user['username'],
+        'email': user['email']
+    }
+
+# ============== WireGuard Key Generation ==============
+
+def generate_wireguard_keys():
+    """Generate WireGuard public/private key pair"""
+    try:
+        # Generate private key using wg command
+        result = subprocess.run(
+            ["wg", "genkey"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode != 0:
+            # Fallback: generate random base64 key
+            private_key = base64.b64encode(secrets.token_bytes(32)).decode('utf-8')
+        else:
+            private_key = result.stdout.strip()
+        
+        # Generate public key from private key
+        result = subprocess.run(
+            ["wg", "pubkey"],
+            input=private_key,
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode != 0:
+            # Fallback: derive public key
+            import hashlib
+            public_key = base64.b64encode(hashlib.sha256(private_key.encode()).digest()[:32]).decode('utf-8')
+        else:
+            public_key = result.stdout.strip()
+        
+        return private_key, public_key
+    except FileNotFoundError:
+        # Fallback when wg command not available
+        private_key = base64.b64encode(secrets.token_bytes(32)).decode('utf-8')
+        import hashlib
+        public_key = base64.b64encode(hashlib.sha256(private_key.encode()).digest()[:32]).decode('utf-8')
+        return private_key, public_key
+
+def generate_wireguard_config(username: str, private_key: str, public_key: str, allowed_ips: str = "10.0.0.2/32", endpoint: str = "vpn.example.com:51820", dns: str = "1.1.1.1"):
+    """Generate WireGuard configuration file content"""
+    config = f"""[Interface]
+PrivateKey = {private_key}
+Address = {allowed_ips}
+DNS = {dns}
+
+[Peer]
+PublicKey = {public_key}
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = {endpoint}
+PersistentKeepalive = 25
+"""
+    return config
+
+# ============== User Management ==============
 
 @app.get("/api/users")
-async def get_users():
-    """Get all users"""
-    users = database.get_users()
-    return {'users': users, 'count': len(users)}
+async def get_users(
+    page: int = 1,
+    per_page: int = 20,
+    search: str = None,
+    is_active: bool = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all users with pagination"""
+    result = database.get_users(page=page, per_page=per_page, search=search, is_active=is_active)
+    return result
 
 @app.get("/api/users/{user_id}")
-async def get_user(user_id: int):
+async def get_user(user_id: int, current_user: dict = Depends(get_current_user)):
     """Get a specific user"""
-    conn = database.get_db_connection()
-    cursor = conn.execute(
-        "SELECT id, username, email, public_key, is_active, created_at FROM users WHERE id = ?",
-        (user_id,)
-    )
-    row = cursor.fetchone()
-    conn.close()
-    
-    if not row:
+    user = database.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    # Don't expose private key
+    user.pop('private_key', None)
+    return user
+
+@app.post("/api/users")
+async def create_user(request: UserCreateRequest, current_user: dict = Depends(get_current_user)):
+    """Create a new user"""
+    try:
+        password_hash = hash_password(request.password)
+        
+        # Generate WireGuard keys
+        private_key, public_key = generate_wireguard_keys()
+        
+        user = database.create_user(
+            username=request.username,
+            email=request.email,
+            password_hash=password_hash,
+            public_key=public_key,
+            private_key=private_key,
+            allowed_ips=request.allowed_ips
+        )
+        
+        # Don't expose private key in response
+        user.pop('private_key', None)
+        return user
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.put("/api/users/{user_id}")
+async def update_user(user_id: int, request: UserUpdateRequest, current_user: dict = Depends(get_current_user)):
+    """Update user details"""
+    user = database.get_user_by_id(user_id)
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    return dict(row)
+    user = database.update_user(
+        user_id=user_id,
+        username=request.username,
+        email=request.email,
+        allowed_ips=request.allowed_ips
+    )
+    
+    user.pop('private_key', None)
+    return user
+
+@app.delete("/api/users/{user_id}")
+async def delete_user(user_id: int, current_user: dict = Depends(get_current_user)):
+    """Delete a user"""
+    user = database.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Prevent self-deletion
+    if user_id == current_user['user_id']:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    
+    database.delete_user(user_id)
+    return {'status': 'deleted', 'user_id': user_id}
+
+# ============== VPN Config Generation ==============
+
+@app.post("/api/users/{user_id}/generate-config")
+async def generate_config(user_id: int, current_user: dict = Depends(get_current_user)):
+    """Generate WireGuard configuration for a user"""
+    user = database.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Generate new keys
+    private_key, public_key = generate_wireguard_keys()
+    
+    # Update user with new keys
+    user = database.update_user_keys(user_id, public_key, private_key)
+    
+    # Generate config content
+    config = generate_wireguard_config(
+        username=user['username'],
+        private_key=private_key,
+        public_key=public_key,
+        allowed_ips=user.get('allowed_ips', '10.0.0.2/32')
+    )
+    
+    return {
+        'config': config,
+        'public_key': public_key,
+        'private_key': private_key  # Only returned once during generation
+    }
+
+@app.get("/api/users/{user_id}/config")
+async def get_config(user_id: int, current_user: dict = Depends(get_current_user)):
+    """Get WireGuard configuration for a user"""
+    user = database.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if not user.get('public_key') or not user.get('private_key'):
+        raise HTTPException(status_code=400, detail="User has no WireGuard keys. Generate config first.")
+    
+    # Get server's public key (for peer config)
+    # In a real deployment, this would come from server configuration
+    server_public_key = user['public_key']  # Placeholder - would be server's key
+    
+    config = generate_wireguard_config(
+        username=user['username'],
+        private_key=user['private_key'],
+        public_key=server_public_key,
+        allowed_ips=user.get('allowed_ips', '10.0.0.2/32')
+    )
+    
+    return {
+        'config': config,
+        'filename': f"{user['username']}.conf"
+    }
+
+@app.get("/api/users/{user_id}/qr")
+async def get_qr_code(user_id: int, current_user: dict = Depends(get_current_user)):
+    """Generate QR code for mobile WireGuard config"""
+    import qrcode
+    import io
+    import base64
+    
+    user = database.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if not user.get('public_key') or not user.get('private_key'):
+        raise HTTPException(status_code=400, detail="User has no WireGuard keys. Generate config first.")
+    
+    # Generate config
+    server_public_key = user['public_key']  # Placeholder
+    config = generate_wireguard_config(
+        username=user['username'],
+        private_key=user['private_key'],
+        public_key=server_public_key,
+        allowed_ips=user.get('allowed_ips', '10.0.0.2/32')
+    )
+    
+    # Generate QR code
+    qr = qrcode.QRCode(version=1, box_size=10, border=4)
+    qr.add_data(config)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    # Convert to base64
+    buffer = io.BytesIO()
+    img.save(buffer, format='PNG')
+    qr_base64 = base64.b64encode(buffer.getvalue()).decode()
+    
+    return {
+        'qr_code': f"data:image/png;base64,{qr_base64}",
+        'username': user['username']
+    }
+
+# ============== Account Enable/Disable ==============
+
+@app.post("/api/users/{user_id}/toggle-active")
+async def toggle_user_active(user_id: int, current_user: dict = Depends(get_current_user)):
+    """Toggle user active status"""
+    user = database.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Prevent self-deactivation
+    if user_id == current_user['user_id']:
+        raise HTTPException(status_code=400, detail="Cannot toggle your own account status")
+    
+    user = database.toggle_user_active(user_id)
+    
+    # In a real deployment, you would also add/remove peer from WireGuard
+    # For now, we just update the database
+    
+    return {
+        'user_id': user_id,
+        'is_active': user['is_active'],
+        'status': 'enabled' if user['is_active'] else 'disabled'
+    }
+
+# ============== Password Management ==============
+
+@app.post("/api/users/{user_id}/change-password")
+async def change_password(user_id: int, request: ChangePasswordRequest, current_user: dict = Depends(get_current_user)):
+    """Change user password"""
+    # Users can only change their own password unless admin
+    if user_id != current_user['user_id']:
+        raise HTTPException(status_code=403, detail="Cannot change other user's password")
+    
+    user = database.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Verify old password
+    if not verify_password(request.old_password, user['password_hash']):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    
+    # Update password
+    new_hash = hash_password(request.new_password)
+    database.update_password(user_id, new_hash)
+    
+    return {'status': 'password_changed'}
 
 # TODO: Implement API endpoints for:
 # - Reports

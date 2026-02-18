@@ -53,13 +53,206 @@ def get_recent_traffic_logs(limit: int = 100):
     conn.close()
     return [dict(row) for row in rows]
 
-def get_users():
-    """Get all users"""
+def get_users(page: int = 1, per_page: int = 20, search: str = None, is_active: bool = None):
+    """Get users with pagination and filtering"""
     conn = get_db_connection()
-    cursor = conn.execute("SELECT id, username, email, public_key, is_active FROM users")
+    
+    query = "SELECT id, username, email, public_key, is_active, created_at, updated_at FROM users WHERE 1=1"
+    params = []
+    
+    if search:
+        query += " AND (username LIKE ? OR email LIKE ?)"
+        params.extend([f'%{search}%', f'%{search}%'])
+    
+    if is_active is not None:
+        query += " AND is_active = ?"
+        params.append(1 if is_active else 0)
+    
+    # Get total count
+    count_query = query.replace("SELECT id, username, email, public_key, is_active, created_at, updated_at", "SELECT COUNT(*) as count")
+    cursor = conn.execute(count_query, params)
+    total_count = cursor.fetchone()['count']
+    
+    # Add pagination
+    query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    offset = (page - 1) * per_page
+    params.extend([per_page, offset])
+    
+    cursor = conn.execute(query, params)
     rows = cursor.fetchall()
     conn.close()
-    return [dict(row) for row in rows]
+    
+    return {
+        'users': [dict(row) for row in rows],
+        'total': total_count,
+        'page': page,
+        'per_page': per_page,
+        'total_pages': (total_count + per_page - 1) // per_page
+    }
+
+def get_user_by_id(user_id: int):
+    """Get user by ID"""
+    conn = get_db_connection()
+    cursor = conn.execute(
+        "SELECT id, username, email, password_hash, public_key, private_key, allowed_ips, is_active, created_at, updated_at FROM users WHERE id = ?",
+        (user_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def get_user_by_username(username: str):
+    """Get user by username (for authentication)"""
+    conn = get_db_connection()
+    cursor = conn.execute(
+        "SELECT * FROM users WHERE username = ?",
+        (username,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def create_user(username: str, email: str, password_hash: str, public_key: str = None, private_key: str = None, allowed_ips: str = None):
+    """Create a new user"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute(
+            """INSERT INTO users (username, email, password_hash, public_key, private_key, allowed_ips, is_active, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""",
+            (username, email, password_hash, public_key, private_key, allowed_ips or "10.0.0.2/32")
+        )
+        conn.commit()
+        user_id = cursor.lastrowid
+        
+        # Create audit log
+        conn.execute(
+            """INSERT INTO audit_logs (user_id, action, details, created_at)
+               VALUES (?, ?, ?, CURRENT_TIMESTAMP)""",
+            (user_id, 'user_created', f'User {username} created')
+        )
+        conn.commit()
+        
+        conn.close()
+        return get_user_by_id(user_id)
+    except sqlite3.IntegrityError as e:
+        conn.close()
+        raise ValueError(f"User already exists: {e}")
+
+def update_user(user_id: int, username: str = None, email: str = None, allowed_ips: str = None):
+    """Update user details"""
+    conn = get_db_connection()
+    
+    updates = []
+    params = []
+    
+    if username:
+        updates.append("username = ?")
+        params.append(username)
+    if email:
+        updates.append("email = ?")
+        params.append(email)
+    if allowed_ips:
+        updates.append("allowed_ips = ?")
+        params.append(allowed_ips)
+    
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    params.append(user_id)
+    
+    query = f"UPDATE users SET {', '.join(updates)} WHERE id = ?"
+    conn.execute(query, params)
+    conn.commit()
+    
+    # Create audit log
+    conn.execute(
+        """INSERT INTO audit_logs (user_id, action, details, created_at)
+           VALUES (?, ?, ?, CURRENT_TIMESTAMP)""",
+        (user_id, 'user_updated', f'User ID {user_id} updated')
+    )
+    conn.commit()
+    conn.close()
+    
+    return get_user_by_id(user_id)
+
+def delete_user(user_id: int):
+    """Delete a user"""
+    conn = get_db_connection()
+    
+    # Get user info before deletion
+    user = get_user_by_id(user_id)
+    if not user:
+        conn.close()
+        return False
+    
+    # Delete user
+    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    
+    # Create audit log
+    conn.execute(
+        """INSERT INTO audit_logs (user_id, action, details, created_at)
+           VALUES (?, ?, ?, CURRENT_TIMESTAMP)""",
+        (user_id, 'user_deleted', f'User {user["username"]} deleted')
+    )
+    conn.commit()
+    conn.close()
+    
+    return True
+
+def toggle_user_active(user_id: int):
+    """Toggle user active status"""
+    conn = get_db_connection()
+    
+    # Get current status
+    cursor = conn.execute("SELECT is_active, username FROM users WHERE id = ?", (user_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return None
+    
+    new_status = 0 if row['is_active'] else 1
+    conn.execute("UPDATE users SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_status, user_id))
+    conn.commit()
+    
+    # Create audit log
+    status_text = "enabled" if new_status else "disabled"
+    conn.execute(
+        """INSERT INTO audit_logs (user_id, action, details, created_at)
+           VALUES (?, ?, ?, CURRENT_TIMESTAMP)""",
+        (user_id, 'user_toggle_active', f'User {row["username"]} {status_text}')
+    )
+    conn.commit()
+    conn.close()
+    
+    return get_user_by_id(user_id)
+
+def update_user_keys(user_id: int, public_key: str, private_key: str):
+    """Update user's WireGuard keys"""
+    conn = get_db_connection()
+    conn.execute(
+        "UPDATE users SET public_key = ?, private_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (public_key, private_key, user_id)
+    )
+    conn.commit()
+    conn.close()
+    return get_user_by_id(user_id)
+
+def update_password(user_id: int, password_hash: str):
+    """Update user's password"""
+    conn = get_db_connection()
+    conn.execute(
+        "UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (password_hash, user_id)
+    )
+    conn.commit()
+    
+    # Create audit log
+    conn.execute(
+        """INSERT INTO audit_logs (user_id, action, details, created_at)
+           VALUES (?, ?, ?, CURRENT_TIMESTAMP)""",
+        (user_id, 'password_changed', 'User password changed')
+    )
+    conn.commit()
+    conn.close()
 
 def get_user_by_public_key(public_key: str):
     """Get user by WireGuard public key"""

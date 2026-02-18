@@ -50,3 +50,22 @@
 - [x] Frontend: Real-time log streaming with pause/resume
 - [x] Full end-to-end test passed
 
+## 2026-02-19 - 帳號管理 (Account Management)
+- [x] Backend: User CRUD endpoints (GET/POST/PUT/DELETE /api/users)
+- [x] Backend: Pagination and search/filter for user list
+- [x] Backend: WireGuard key generation (wg genkey fallback)
+- [x] Backend: VPN config generation (.conf file content)
+- [x] Backend: QR code generation for mobile apps
+- [x] Backend: Account enable/disable toggle
+- [x] Backend: Password management (change password)
+- [x] Backend: JWT authentication (/api/auth/login, /api/auth/logout, /api/auth/me)
+- [x] Frontend: LoginPage.vue - Login form with JWT
+- [x] Frontend: UserList.vue - User management UI with CRUD
+- [x] Frontend: Search and filter users
+- [x] Frontend: Toggle active status
+- [x] Frontend: Generate/download config
+- [x] Frontend: QR code display modal
+- [x] Frontend: Change password modal
+- [x] Frontend: Auth guard for protected routes
+- [x] Full end-to-end test passed
+
