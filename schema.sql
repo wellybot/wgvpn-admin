@@ -36,12 +36,23 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
--- Traffic records
+-- Traffic records (daily aggregates)
 CREATE TABLE IF NOT EXISTS traffic_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     date DATE NOT NULL,
     bytes_received INTEGER DEFAULT 0,
     bytes_sent INTEGER DEFAULT 0,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- Traffic logs (real-time snapshots)
+CREATE TABLE IF NOT EXISTS traffic_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    peer_public_key TEXT,
+    bytes_received INTEGER DEFAULT 0,
+    bytes_sent INTEGER DEFAULT 0,
+    snapshot_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );

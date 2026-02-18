@@ -5,5 +5,15 @@
 - [x] Backend scaffolding (FastAPI)
 - [x] Frontend scaffolding (Vue.js 3 + Vite)
 - [x] Database schema defined
-- [ ] TODO: Implement features
+- [x] TODO: Implement features
+
+## 2026-02-19 - Real-time Traffic Monitoring
+- [x] Backend: `/api/traffic` endpoint implemented
+- [x] Backend: Parse `wg show` for peer statistics
+- [x] Backend: Mock data fallback when WireGuard not available
+- [x] Backend: Store traffic snapshots in SQLite
+- [x] Frontend: TrafficDashboard.vue component created
+- [x] Frontend: Real-time display with auto-refresh (5s)
+- [x] Frontend: Progress bars and formatted bytes
+- [x] Full end-to-end test passed
 
