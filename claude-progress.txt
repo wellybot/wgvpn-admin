@@ -50,22 +50,35 @@
 - [x] Frontend: Real-time log streaming with pause/resume
 - [x] Full end-to-end test passed
 
-## 2026-02-19 - 帳號管理 (Account Management)
-- [x] Backend: User CRUD endpoints (GET/POST/PUT/DELETE /api/users)
-- [x] Backend: Pagination and search/filter for user list
-- [x] Backend: WireGuard key generation (wg genkey fallback)
-- [x] Backend: VPN config generation (.conf file content)
-- [x] Backend: QR code generation for mobile apps
-- [x] Backend: Account enable/disable toggle
-- [x] Backend: Password management (change password)
-- [x] Backend: JWT authentication (/api/auth/login, /api/auth/logout, /api/auth/me)
-- [x] Frontend: LoginPage.vue - Login form with JWT
-- [x] Frontend: UserList.vue - User management UI with CRUD
-- [x] Frontend: Search and filter users
-- [x] Frontend: Toggle active status
-- [x] Frontend: Generate/download config
-- [x] Frontend: QR code display modal
-- [x] Frontend: Change password modal
-- [x] Frontend: Auth guard for protected routes
+## 2026-02-19 - 自動化報表 (Automated Reports) - FINAL MODULE
+- [x] Backend: GET /api/reports/traffic - Traffic report endpoint
+- [x] Backend: POST /api/reports/traffic/schedule - Schedule periodic reports
+- [x] Backend: GET /api/reports/traffic/scheduled - List scheduled reports
+- [x] Backend: DELETE /api/reports/traffic/schedule/{id} - Delete schedule
+- [x] Backend: GET /api/reports/user-stats - User statistics endpoint
+- [x] Backend: GET /api/reports/user-stats/export - Export user stats
+- [x] Backend: GET /api/reports/health - System health metrics
+- [x] Backend: GET /api/reports/health/alerts - Health alerts
+- [x] Backend: GET/POST/PUT/DELETE /api/reports/templates - Template CRUD
+- [x] Backend: POST /api/reports/generate-from-template/{id} - Generate from template
+- [x] Database: Added scheduled_reports, report_templates, generated_reports tables
+- [x] Frontend: TrafficReports.vue - Traffic report dashboard with charts
+- [x] Frontend: UserStats.vue - User statistics with pie/bar charts
+- [x] Frontend: SystemHealth.vue - System health gauges and alerts
+- [x] Frontend: ReportTemplates.vue - Template management
+- [x] Full end-to-end test passed
+
+## 2026-02-19 - 稽查記錄 (Audit Records)
+- [x] Backend: Audit logs endpoint with filters (/api/audit/operations)
+- [x] Backend: Login history endpoint (/api/audit/login-history)
+- [x] Backend: System events endpoint (/api/audit/system-events)
+- [x] Backend: Compliance reports generation (/api/audit/reports/generate)
+- [x] Backend: Download reports as JSON/CSV
+- [x] Backend: Auto-log admin actions (CREATE_USER, UPDATE_USER, DELETE_USER, TOGGLE_USER, GENERATE_CONFIG, CHANGE_PASSWORD, LOGIN, LOGOUT)
+- [x] Database: Add login_history, system_events, compliance_reports tables
+- [x] Frontend: AuditLogs.vue - Operation log viewer with filters and export
+- [x] Frontend: LoginHistory.vue - Login history with success/failed stats
+- [x] Frontend: SystemEvents.vue - System event timeline view
+- [x] Frontend: ComplianceReports.vue - Report generation with preview
 - [x] Full end-to-end test passed
 

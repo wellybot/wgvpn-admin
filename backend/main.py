@@ -5,7 +5,7 @@ WireGuard VPN Admin - FastAPI Backend
 import subprocess
 import re
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List, Optional
@@ -1228,3 +1228,344 @@ async def download_compliance_report(
             'data': output.getvalue(),
             'filename': f"compliance_report_{report_id}.csv"
         }
+
+# ============== Automated Reports Endpoints ==============
+
+# --- Traffic Reports ---
+
+@app.get("/api/reports/traffic")
+async def get_traffic_report(
+    start_date: str = None,
+    end_date: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get traffic report data for specified date range
+    """
+    if not start_date:
+        start_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+    if not end_date:
+        end_date = datetime.now().strftime('%Y-%m-%d')
+    
+    data = database.generate_traffic_report_data(
+        start_date=start_date,
+        end_date=end_date,
+        include_users=True,
+        top_users_count=10
+    )
+    return data
+
+@app.post("/api/reports/traffic/schedule")
+async def schedule_traffic_report(
+    request: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Schedule a periodic traffic report
+    """
+    import json
+    
+    report = database.create_scheduled_report(
+        name=request.get('name'),
+        report_type='traffic',
+        schedule_type=request.get('schedule_type'),
+        schedule_time=request.get('schedule_time'),
+        schedule_dayOfWeek=request.get('schedule_dayOfWeek'),
+        schedule_dayOfMonth=request.get('schedule_dayOfMonth'),
+        include_traffic=request.get('include_traffic', True),
+        include_users=request.get('include_users', True),
+        top_users_count=request.get('top_users_count', 10),
+        email_recipients=json.dumps(request.get('email_recipients', [])),
+        created_by=current_user['user_id']
+    )
+    
+    # Log system event
+    database.log_system_event(
+        event_type='report_scheduled',
+        severity='info',
+        message=f"Traffic report scheduled: {request.get('name')}",
+        details=f"Schedule: {request.get('schedule_type')}",
+        source='api'
+    )
+    
+    return report
+
+@app.get("/api/reports/traffic/scheduled")
+async def get_scheduled_traffic_reports(
+    limit: int = 50,
+    offset: int = 0,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get list of scheduled traffic reports"""
+    return database.get_scheduled_reports(report_type='traffic', limit=limit, offset=offset)
+
+@app.delete("/api/reports/traffic/schedule/{schedule_id}")
+async def delete_scheduled_report(
+    schedule_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete a scheduled report"""
+    database.delete_scheduled_report(schedule_id)
+    return {'status': 'deleted', 'schedule_id': schedule_id}
+
+@app.get("/api/reports/generated")
+async def get_generated_reports(
+    template_id: int = None,
+    scheduled_report_id: int = None,
+    report_type: str = None,
+    limit: int = 50,
+    offset: int = 0,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get list of generated reports"""
+    return database.get_generated_reports(
+        template_id=template_id,
+        scheduled_report_id=scheduled_report_id,
+        report_type=report_type,
+        limit=limit,
+        offset=offset
+    )
+
+@app.get("/api/reports/generated/{report_id}")
+async def get_generated_report(
+    report_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get a specific generated report"""
+    report = database.get_generated_report(report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return report
+
+# --- User Statistics ---
+
+@app.get("/api/reports/user-stats")
+async def get_user_statistics(
+    start_date: str = None,
+    end_date: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get user usage statistics
+    """
+    return database.get_user_statistics(start_date=start_date, end_date=end_date)
+
+@app.get("/api/reports/user-stats/export")
+async def export_user_stats(
+    start_date: str = None,
+    end_date: str = None,
+    format: str = 'csv',
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Export user statistics to CSV or JSON
+    """
+    stats = database.get_user_statistics(start_date=start_date, end_date=end_date)
+    
+    if format == 'json':
+        return {
+            'data': stats,
+            'filename': f"user_statistics_{datetime.now().strftime('%Y%m%d')}.json"
+        }
+    else:
+        import csv
+        import io
+        
+        output = io.StringIO()
+        if stats.get('users'):
+            fieldnames = ['id', 'username', 'email', 'is_active', 'total_received', 'total_sent', 
+                         'total_transfer', 'active_days', 'connection_count', 'avg_daily_transfer']
+            writer = csv.DictWriter(output, fieldnames=fieldnames)
+            writer.writeheader()
+            for user in stats['users']:
+                row = {k: user.get(k) for k in fieldnames}
+                writer.writerow(row)
+        
+        return {
+            'data': output.getvalue(),
+            'filename': f"user_statistics_{datetime.now().strftime('%Y%m%d')}.csv"
+        }
+
+# --- System Health ---
+
+@app.get("/api/reports/health")
+async def get_system_health(
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get system health report
+    """
+    return database.get_system_health()
+
+@app.get("/api/reports/health/alerts")
+async def get_health_alerts(
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get health alerts
+    """
+    return database.get_health_alerts()
+
+# --- Report Templates ---
+
+@app.get("/api/reports/templates")
+async def get_report_templates(
+    limit: int = 50,
+    offset: int = 0,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get list of report templates"""
+    return database.get_report_templates(limit=limit, offset=offset)
+
+@app.get("/api/reports/templates/{template_id}")
+async def get_report_template(
+    template_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get a specific report template"""
+    template = database.get_report_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return template
+
+class ReportTemplateRequest(BaseModel):
+    name: str
+    description: str = ""
+    data_sources: str  # JSON array
+    date_range: str
+    custom_start_date: str = None
+    custom_end_date: str = None
+    format: str = "json"
+    filters: str = None  # JSON object
+
+@app.post("/api/reports/templates")
+async def create_report_template(
+    request: ReportTemplateRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Create a new report template"""
+    template = database.create_report_template(
+        name=request.name,
+        description=request.description,
+        data_sources=request.data_sources,
+        date_range=request.date_range,
+        custom_start_date=request.custom_start_date,
+        custom_end_date=request.custom_end_date,
+        format=request.format,
+        filters=request.filters,
+        created_by=current_user['user_id']
+    )
+    
+    # Log system event
+    database.log_system_event(
+        event_type='template_created',
+        severity='info',
+        message=f"Report template created: {request.name}",
+        source='api'
+    )
+    
+    return template
+
+@app.put("/api/reports/templates/{template_id}")
+async def update_report_template(
+    template_id: int,
+    request: ReportTemplateRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update a report template"""
+    template = database.get_report_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    return database.update_report_template(
+        template_id,
+        name=request.name,
+        description=request.description,
+        data_sources=request.data_sources,
+        date_range=request.date_range,
+        custom_start_date=request.custom_start_date,
+        custom_end_date=request.custom_end_date,
+        format=request.format,
+        filters=request.filters
+    )
+
+@app.delete("/api/reports/templates/{template_id}")
+async def delete_report_template(
+    template_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete a report template"""
+    template = database.get_report_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    database.delete_report_template(template_id)
+    return {'status': 'deleted', 'template_id': template_id}
+
+class GenerateFromTemplateRequest(BaseModel):
+    start_date: str
+    end_date: str
+
+@app.post("/api/reports/generate-from-template/{template_id}")
+async def generate_from_template(
+    template_id: int,
+    request: GenerateFromTemplateRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Generate a report from a template"""
+    import json
+    
+    template = database.get_report_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    # Parse data sources
+    data_sources = json.loads(template['data_sources'])
+    
+    report_data = {
+        'template_name': template['name'],
+        'period': {'start_date': request.start_date, 'end_date': request.end_date},
+        'generated_at': datetime.now().isoformat(),
+        'sections': {}
+    }
+    
+    # Generate data based on data sources
+    if 'traffic' in data_sources:
+        report_data['sections']['traffic'] = database.generate_traffic_report_data(
+            start_date=request.start_date,
+            end_date=request.end_date
+        )
+    
+    if 'users' in data_sources:
+        report_data['sections']['users'] = database.get_user_statistics(
+            start_date=request.start_date,
+            end_date=request.end_date
+        )
+    
+    if 'system' in data_sources:
+        report_data['sections']['system'] = database.get_system_health()
+        report_data['sections']['system_alerts'] = database.get_health_alerts()
+    
+    if 'audit' in data_sources:
+        report_data['sections']['audit'] = database.generate_compliance_report_data(
+            report_type='custom',
+            start_date=request.start_date,
+            end_date=request.end_date
+        )
+    
+    # Save generated report
+    generated = database.create_generated_report(
+        name=f"{template['name']} - {datetime.now().strftime('%Y-%m-%d')}",
+        report_type=template['name'],
+        start_date=request.start_date,
+        end_date=request.end_date,
+        data=json.dumps(report_data),
+        format=template['format'],
+        template_id=template_id,
+        generated_by=current_user['user_id']
+    )
+    
+    return {
+        'report': generated,
+        'data': report_data
+    }

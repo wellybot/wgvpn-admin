@@ -4,7 +4,7 @@ Database setup for WireGuard VPN Admin
 
 import sqlite3
 from pathlib import Path
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 DATABASE_PATH = Path(__file__).parent / "wgvpn.db"
 
@@ -1238,6 +1238,489 @@ def generate_compliance_report_data(report_type: str, start_date: str, end_date:
     
     conn.close()
     return report_data
+
+# ============== Scheduled Reports ==============
+
+def create_scheduled_report(name: str, report_type: str, schedule_type: str, schedule_time: str = None,
+                            schedule_dayOfWeek: int = None, schedule_dayOfMonth: int = None,
+                            include_traffic: bool = True, include_users: bool = False,
+                            include_system: bool = False, include_audit: bool = False,
+                            top_users_count: int = 10, email_recipients: str = None,
+                            created_by: int = None):
+    """Create a new scheduled report"""
+    import json
+    conn = get_db_connection()
+    cursor = conn.execute(
+        """INSERT INTO scheduled_reports 
+           (name, report_type, schedule_type, schedule_time, schedule_dayOfWeek, schedule_dayOfMonth,
+            include_traffic, include_users, include_system, include_audit, top_users_count,
+            email_recipients, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (name, report_type, schedule_type, schedule_time, schedule_dayOfWeek, schedule_dayOfMonth,
+         include_traffic, include_users, include_system, include_audit, top_users_count,
+         email_recipients, created_by)
+    )
+    conn.commit()
+    report_id = cursor.lastrowid
+    conn.close()
+    return get_scheduled_report(report_id)
+
+def get_scheduled_report(report_id: int):
+    """Get a scheduled report by ID"""
+    conn = get_db_connection()
+    cursor = conn.execute("SELECT * FROM scheduled_reports WHERE id = ?", (report_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def get_scheduled_reports(report_type: str = None, is_active: bool = None, limit: int = 50, offset: int = 0):
+    """Get list of scheduled reports"""
+    conn = get_db_connection()
+    query = "SELECT * FROM scheduled_reports WHERE 1=1"
+    params = []
+    
+    if report_type:
+        query += " AND report_type = ?"
+        params.append(report_type)
+    if is_active is not None:
+        query += " AND is_active = ?"
+        params.append(1 if is_active else 0)
+    
+    query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    
+    cursor = conn.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def update_scheduled_report(report_id: int, **kwargs):
+    """Update a scheduled report"""
+    allowed_fields = ['name', 'report_type', 'schedule_type', 'schedule_time', 'schedule_dayOfWeek',
+                     'schedule_dayOfMonth', 'include_traffic', 'include_users', 'include_system',
+                     'include_audit', 'top_users_count', 'email_recipients', 'is_active']
+    
+    updates = []
+    params = []
+    for key, value in kwargs.items():
+        if key in allowed_fields:
+            updates.append(f"{key} = ?")
+            params.append(value)
+    
+    if not updates:
+        return get_scheduled_report(report_id)
+    
+    params.append(report_id)
+    conn = get_db_connection()
+    conn.execute(f"UPDATE scheduled_reports SET {', '.join(updates)} WHERE id = ?", params)
+    conn.commit()
+    conn.close()
+    return get_scheduled_report(report_id)
+
+def delete_scheduled_report(report_id: int):
+    """Delete a scheduled report"""
+    conn = get_db_connection()
+    conn.execute("DELETE FROM scheduled_reports WHERE id = ?", (report_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+def update_scheduled_report_run_time(report_id: int, last_run: str, next_run: str):
+    """Update last_run_at and next_run_at for a scheduled report"""
+    conn = get_db_connection()
+    conn.execute(
+        "UPDATE scheduled_reports SET last_run_at = ?, next_run_at = ? WHERE id = ?",
+        (last_run, next_run, report_id)
+    )
+    conn.commit()
+    conn.close()
+
+# ============== Report Templates ==============
+
+def create_report_template(name: str, description: str, data_sources: str, date_range: str,
+                           custom_start_date: str = None, custom_end_date: str = None,
+                           format: str = 'json', filters: str = None, created_by: int = None):
+    """Create a new report template"""
+    conn = get_db_connection()
+    cursor = conn.execute(
+        """INSERT INTO report_templates 
+           (name, description, data_sources, date_range, custom_start_date, custom_end_date, format, filters, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (name, description, data_sources, date_range, custom_start_date, custom_end_date, format, filters, created_by)
+    )
+    conn.commit()
+    template_id = cursor.lastrowid
+    conn.close()
+    return get_report_template(template_id)
+
+def get_report_template(template_id: int):
+    """Get a report template by ID"""
+    conn = get_db_connection()
+    cursor = conn.execute(
+        """SELECT rt.*, u.username as created_by_username
+           FROM report_templates rt 
+           LEFT JOIN users u ON rt.created_by = u.id 
+           WHERE rt.id = ?""",
+        (template_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def get_report_templates(created_by: int = None, limit: int = 50, offset: int = 0):
+    """Get list of report templates"""
+    conn = get_db_connection()
+    query = "SELECT rt.*, u.username as created_by_username FROM report_templates rt LEFT JOIN users u ON rt.created_by = u.id"
+    params = []
+    
+    if created_by:
+        query += " WHERE rt.created_by = ?"
+        params.append(created_by)
+    
+    query += " ORDER BY rt.created_at DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    
+    cursor = conn.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def update_report_template(template_id: int, **kwargs):
+    """Update a report template"""
+    import json
+    allowed_fields = ['name', 'description', 'data_sources', 'date_range', 'custom_start_date',
+                     'custom_end_date', 'format', 'filters']
+    
+    updates = []
+    params = []
+    for key, value in kwargs.items():
+        if key in allowed_fields:
+            updates.append(f"{key} = ?")
+            params.append(value)
+    
+    if not updates:
+        return get_report_template(template_id)
+    
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    params.append(template_id)
+    conn = get_db_connection()
+    conn.execute(f"UPDATE report_templates SET {', '.join(updates)} WHERE id = ?", params)
+    conn.commit()
+    conn.close()
+    return get_report_template(template_id)
+
+def delete_report_template(template_id: int):
+    """Delete a report template"""
+    conn = get_db_connection()
+    conn.execute("DELETE FROM report_templates WHERE id = ?", (template_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+# ============== Generated Reports ==============
+
+def create_generated_report(name: str, report_type: str, start_date: str, end_date: str,
+                            data: str = None, file_path: str = None, format: str = 'json',
+                            template_id: int = None, scheduled_report_id: int = None,
+                            generated_by: int = None):
+    """Create a generated report record"""
+    conn = get_db_connection()
+    cursor = conn.execute(
+        """INSERT INTO generated_reports 
+           (name, report_type, start_date, end_date, data, file_path, format, template_id, scheduled_report_id, generated_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (name, report_type, start_date, end_date, data, file_path, format, template_id, scheduled_report_id, generated_by)
+    )
+    conn.commit()
+    report_id = cursor.lastrowid
+    conn.close()
+    return get_generated_report(report_id)
+
+def get_generated_report(report_id: int):
+    """Get a generated report by ID"""
+    conn = get_db_connection()
+    cursor = conn.execute(
+        """SELECT gr.*, u.username as generated_by_username
+           FROM generated_reports gr 
+           LEFT JOIN users u ON gr.generated_by = u.id 
+           WHERE gr.id = ?""",
+        (report_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def get_generated_reports(template_id: int = None, scheduled_report_id: int = None,
+                          report_type: str = None, limit: int = 50, offset: int = 0):
+    """Get list of generated reports"""
+    conn = get_db_connection()
+    query = "SELECT gr.*, u.username as generated_by_username FROM generated_reports gr LEFT JOIN users u ON gr.generated_by = u.id WHERE 1=1"
+    params = []
+    
+    if template_id:
+        query += " AND gr.template_id = ?"
+        params.append(template_id)
+    if scheduled_report_id:
+        query += " AND gr.scheduled_report_id = ?"
+        params.append(scheduled_report_id)
+    if report_type:
+        query += " AND gr.report_type = ?"
+        params.append(report_type)
+    
+    query += " ORDER BY gr.generated_at DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    
+    cursor = conn.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+# ============== Traffic Report Data Generation ==============
+
+def generate_traffic_report_data(start_date: str, end_date: str, include_users: bool = True,
+                                  include_system: bool = False, top_users_count: int = 10):
+    """Generate traffic report data"""
+    import json
+    
+    report_data = {
+        'period': {'start_date': start_date, 'end_date': end_date},
+        'generated_at': datetime.now().isoformat(),
+        'traffic': {}
+    }
+    
+    conn = get_db_connection()
+    
+    # 1. Total traffic summary
+    total_query = """SELECT 
+        COALESCE(SUM(bytes_received), 0) as total_received,
+        COALESCE(SUM(bytes_sent), 0) as total_sent,
+        COUNT(DISTINCT user_id) as active_users
+    FROM traffic_records
+    WHERE date >= ? AND date <= ?"""
+    
+    cursor = conn.execute(total_query, (start_date, end_date))
+    total = cursor.fetchone()
+    report_data['traffic']['total_received'] = total['total_received']
+    report_data['traffic']['total_sent'] = total['total_sent']
+    report_data['traffic']['total_transfer'] = total['total_received'] + total['total_sent']
+    report_data['traffic']['active_users'] = total['active_users']
+    
+    # 2. Top users by traffic
+    if include_users:
+        top_users_query = """SELECT 
+            u.id, u.username,
+            COALESCE(SUM(tr.bytes_received), 0) as total_received,
+            COALESCE(SUM(tr.bytes_sent), 0) as total_sent,
+            COALESCE(SUM(tr.bytes_received) + SUM(tr.bytes_sent), 0) as total_transfer
+        FROM users u
+        LEFT JOIN traffic_records tr ON u.id = tr.user_id AND tr.date >= ? AND tr.date <= ?
+        GROUP BY u.id
+        ORDER BY total_transfer DESC
+        LIMIT ?"""
+        
+        cursor = conn.execute(top_users_query, (start_date, end_date, top_users_count))
+        report_data['traffic']['top_users'] = [dict(row) for row in cursor.fetchall()]
+    
+    # 3. Daily traffic trends
+    daily_query = """SELECT 
+        date,
+        COALESCE(SUM(bytes_received), 0) as total_received,
+        COALESCE(SUM(bytes_sent), 0) as total_sent
+    FROM traffic_records
+    WHERE date >= ? AND date <= ?
+    GROUP BY date
+    ORDER BY date"""
+    
+    cursor = conn.execute(daily_query, (start_date, end_date))
+    report_data['traffic']['daily_trends'] = [dict(row) for row in cursor.fetchall()]
+    
+    # 4. Peak hours analysis
+    hourly_query = """SELECT 
+        strftime('%H', snapshot_time) as hour,
+        COUNT(*) as connection_count,
+        COALESCE(SUM(bytes_received), 0) as total_received,
+        COALESCE(SUM(bytes_sent), 0) as total_sent
+    FROM traffic_logs
+    WHERE DATE(snapshot_time) >= ? AND DATE(snapshot_time) <= ?
+    GROUP BY hour
+    ORDER BY hour"""
+    
+    cursor = conn.execute(hourly_query, (start_date, end_date))
+    report_data['traffic']['hourly_distribution'] = [dict(row) for row in cursor.fetchall()]
+    
+    # Find peak hour
+    if report_data['traffic']['hourly_distribution']:
+        peak = max(report_data['traffic']['hourly_distribution'], 
+                   key=lambda x: x['total_received'] + x['total_sent'])
+        report_data['traffic']['peak_hour'] = peak['hour']
+    
+    conn.close()
+    return report_data
+
+# ============== User Statistics ==============
+
+def get_user_statistics(start_date: str = None, end_date: str = None):
+    """Get user usage statistics"""
+    import json
+    
+    if not start_date:
+        start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+    if not end_date:
+        end_date = datetime.now().strftime('%Y-%m-%d')
+    
+    stats = {
+        'period': {'start_date': start_date, 'end_date': end_date},
+        'users': []
+    }
+    
+    conn = get_db_connection()
+    
+    # Get all users with their stats
+    users_query = """SELECT 
+        u.id, u.username, u.email, u.is_active, u.created_at,
+        COALESCE(SUM(tr.bytes_received), 0) as total_received,
+        COALESCE(SUM(tr.bytes_sent), 0) as total_sent,
+        COALESCE(SUM(tr.bytes_received) + SUM(tr.bytes_sent), 0) as total_transfer,
+        COUNT(DISTINCT tr.date) as active_days,
+        (SELECT COUNT(*) FROM connection_logs cl WHERE cl.user_id = u.id AND DATE(cl.connected_at) >= ? AND DATE(cl.connected_at) <= ?) as connection_count,
+        (SELECT MAX(cl.connected_at) FROM connection_logs cl WHERE cl.user_id = u.id) as last_connection
+    FROM users u
+    LEFT JOIN traffic_records tr ON u.id = tr.user_id AND tr.date >= ? AND tr.date <= ?
+    GROUP BY u.id
+    ORDER BY total_transfer DESC"""
+    
+    cursor = conn.execute(users_query, (start_date, end_date, start_date, end_date))
+    users = [dict(row) for row in cursor.fetchall()]
+    
+    # Calculate average daily usage
+    for user in users:
+        if user['active_days'] and user['active_days'] > 0:
+            user['avg_daily_transfer'] = user['total_transfer'] / user['active_days']
+        else:
+            user['avg_daily_transfer'] = 0
+    
+    stats['users'] = users
+    
+    # Summary
+    summary_query = """SELECT 
+        COUNT(*) as total_users,
+        SUM(total_received) as total_received,
+        SUM(total_sent) as total_sent,
+        AVG(total_transfer) as avg_transfer
+    FROM (
+        SELECT 
+            u.id,
+            COALESCE(SUM(tr.bytes_received), 0) as total_received,
+            COALESCE(SUM(tr.bytes_sent), 0) as total_sent,
+            COALESCE(SUM(tr.bytes_received) + SUM(tr.bytes_sent), 0) as total_transfer
+        FROM users u
+        LEFT JOIN traffic_records tr ON u.id = tr.user_id AND tr.date >= ? AND tr.date <= ?
+        GROUP BY u.id
+    )"""
+    
+    cursor = conn.execute(summary_query, (start_date, end_date))
+    summary = cursor.fetchone()
+    stats['summary'] = dict(summary)
+    
+    conn.close()
+    return stats
+
+# ============== System Health ==============
+
+def get_system_health():
+    """Get system health metrics"""
+    import psutil
+    import subprocess
+    
+    health = {
+        'timestamp': datetime.now().isoformat(),
+        'cpu': {},
+        'memory': {},
+        'disk': {},
+        'network': {},
+        'wireguard': {}
+    }
+    
+    # CPU usage
+    health['cpu']['usage_percent'] = psutil.cpu_percent(interval=1)
+    health['cpu']['count'] = psutil.cpu_count()
+    
+    # Memory
+    mem = psutil.virtual_memory()
+    health['memory']['total'] = mem.total
+    health['memory']['used'] = mem.used
+    health['memory']['free'] = mem.free
+    health['memory']['percent'] = mem.percent
+    
+    # Disk
+    disk = psutil.disk_usage('/')
+    health['disk']['total'] = disk.total
+    health['disk']['used'] = disk.used
+    health['disk']['free'] = disk.free
+    health['disk']['percent'] = disk.percent
+    
+    # Active connections
+    try:
+        conn = get_db_connection()
+        cursor = conn.execute(
+            "SELECT COUNT(*) as count FROM connection_logs WHERE disconnected_at IS NULL"
+        )
+        row = cursor.fetchone()
+        health['network']['active_connections'] = row['count'] if row else 0
+        conn.close()
+    except:
+        health['network']['active_connections'] = 0
+    
+    # WireGuard status
+    try:
+        result = subprocess.run(['wg', 'show'], capture_output=True, text=True, timeout=5)
+        health['wireguard']['status'] = 'active' if result.returncode == 0 else 'inactive'
+        health['wireguard']['interface_count'] = result.stdout.count('interface:')
+        health['wireguard']['peer_count'] = result.stdout.count('peer:')
+    except:
+        health['wireguard']['status'] = 'not_installed'
+        health['wireguard']['interface_count'] = 0
+        health['wireguard']['peer_count'] = 0
+    
+    return health
+
+def get_health_alerts():
+    """Get health alerts"""
+    import psutil
+    
+    alerts = []
+    
+    # Check CPU
+    cpu = psutil.cpu_percent(interval=1)
+    if cpu > 80:
+        alerts.append({
+            'type': 'cpu',
+            'severity': 'warning' if cpu < 90 else 'critical',
+            'message': f'CPU usage is at {cpu:.1f}%',
+            'value': cpu
+        })
+    
+    # Check Memory
+    mem = psutil.virtual_memory()
+    if mem.percent > 80:
+        alerts.append({
+            'type': 'memory',
+            'severity': 'warning' if mem.percent < 90 else 'critical',
+            'message': f'Memory usage is at {mem.percent:.1f}%',
+            'value': mem.percent
+        })
+    
+    # Check Disk
+    disk = psutil.disk_usage('/')
+    if disk.percent > 80:
+        alerts.append({
+            'type': 'disk',
+            'severity': 'warning' if disk.percent < 90 else 'critical',
+            'message': f'Disk usage is at {disk.percent:.1f}%',
+            'value': disk.percent
+        })
+    
+    return alerts
 
 if __name__ == "__main__":
     init_db()

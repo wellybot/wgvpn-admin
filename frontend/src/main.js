@@ -13,6 +13,10 @@ import AuditLogs from './views/AuditLogs.vue'
 import LoginHistory from './views/LoginHistory.vue'
 import SystemEvents from './views/SystemEvents.vue'
 import ComplianceReports from './views/ComplianceReports.vue'
+import TrafficReports from './views/TrafficReports.vue'
+import UserStats from './views/UserStats.vue'
+import SystemHealth from './views/SystemHealth.vue'
+import ReportTemplates from './views/ReportTemplates.vue'
 
 // Auth guard
 const requireAuth = (to, from, next) => {
@@ -37,7 +41,11 @@ const routes = [
   { path: '/audit/operations', component: AuditLogs, beforeEnter: requireAuth },
   { path: '/audit/login-history', component: LoginHistory, beforeEnter: requireAuth },
   { path: '/audit/system-events', component: SystemEvents, beforeEnter: requireAuth },
-  { path: '/audit/reports', component: ComplianceReports, beforeEnter: requireAuth }
+  { path: '/audit/reports', component: ComplianceReports, beforeEnter: requireAuth },
+  { path: '/reports/traffic', component: TrafficReports, beforeEnter: requireAuth },
+  { path: '/reports/user-stats', component: UserStats, beforeEnter: requireAuth },
+  { path: '/reports/health', component: SystemHealth, beforeEnter: requireAuth },
+  { path: '/reports/templates', component: ReportTemplates, beforeEnter: requireAuth }
 ]
 
 const router = createRouter({

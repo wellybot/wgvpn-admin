@@ -44,6 +44,23 @@
             </router-link>
           </div>
         </div>
+        <div class="nav-dropdown">
+          <span class="nav-link dropdown-toggle">📊 自動化報表</span>
+          <div class="dropdown-menu">
+            <router-link to="/reports/traffic" class="dropdown-item">
+              流量報告
+            </router-link>
+            <router-link to="/reports/user-stats" class="dropdown-item">
+              用戶統計
+            </router-link>
+            <router-link to="/reports/health" class="dropdown-item">
+              系統健康
+            </router-link>
+            <router-link to="/reports/templates" class="dropdown-item">
+              報告範本
+            </router-link>
+          </div>
+        </div>
         <button v-if="isLoggedIn" @click="logout" class="logout-btn">
           🚪 登出
         </button>

@@ -110,3 +110,62 @@ CREATE TABLE IF NOT EXISTS compliance_reports (
     completed_at TIMESTAMP,
     FOREIGN KEY (created_by) REFERENCES users(id)
 );
+
+-- Scheduled reports (for periodic traffic reports)
+CREATE TABLE IF NOT EXISTS scheduled_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    report_type TEXT NOT NULL,
+    schedule_type TEXT NOT NULL,  -- daily, weekly, monthly
+    schedule_time TIME,  -- time of day to run
+    schedule_dayOfWeek INTEGER,  -- for weekly (0-6, Sunday=0)
+    schedule_dayOfMonth INTEGER,  -- for monthly (1-31)
+    include_traffic BOOLEAN DEFAULT 1,
+    include_users BOOLEAN DEFAULT 0,
+    include_system BOOLEAN DEFAULT 0,
+    include_audit BOOLEAN DEFAULT 0,
+    top_users_count INTEGER DEFAULT 10,
+    email_recipients TEXT,  -- JSON array of email addresses
+    is_active BOOLEAN DEFAULT 1,
+    last_run_at TIMESTAMP,
+    next_run_at TIMESTAMP,
+    created_by INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+-- Report templates (for custom report templates)
+CREATE TABLE IF NOT EXISTS report_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    data_sources TEXT NOT NULL,  -- JSON array: traffic, users, system, audit
+    date_range TEXT NOT NULL,  -- today, yesterday, last7days, last30days, custom
+    custom_start_date DATE,
+    custom_end_date DATE,
+    format TEXT DEFAULT 'json',  -- json, csv, pdf
+    filters TEXT,  -- JSON object with filter settings
+    created_by INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+-- Generated reports history
+CREATE TABLE IF NOT EXISTS generated_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    template_id INTEGER,
+    scheduled_report_id INTEGER,
+    name TEXT NOT NULL,
+    report_type TEXT NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    data TEXT,  -- JSON report data
+    file_path TEXT,
+    format TEXT DEFAULT 'json',
+    generated_by INTEGER,
+    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (template_id) REFERENCES report_templates(id),
+    FOREIGN KEY (scheduled_report_id) REFERENCES scheduled_reports(id),
+    FOREIGN KEY (generated_by) REFERENCES users(id)
+);
