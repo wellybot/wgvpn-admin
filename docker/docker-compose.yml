@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  wgvpn-admin:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: wgvpn-admin
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    ports:
+      - "8000:8000"
+      - "5173:5173"
+      - "51820:51820/udp"
+    volumes:
+      - ..:/app
+      - wgvpn-data:/app/backend
+    environment:
+      - WG_INTERFACE=wg0
+    networks:
+      - wgvpn-net
+    stdin_open: true
+    tty: true
+
+volumes:
+  wgvpn-data:
+
+networks:
+  wgvpn-net:
+    driver: bridge
