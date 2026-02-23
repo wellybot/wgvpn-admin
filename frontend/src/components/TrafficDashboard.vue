@@ -64,7 +64,7 @@
                 ></div>
               </div>
             </td>
-            <td class="public-key">{{ peer.public_key.substring(0, 16) }}...</td>
+            <td class="public-key">{{ peer.public_key ? peer.public_key.substring(0, 16) : 'N/A' }}...</td>
           </tr>
           <tr v-if="peers.length === 0">
             <td colspan="4" class="no-data">目前沒有在線的用戶</td>
