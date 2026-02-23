@@ -99,17 +99,19 @@ def get_mock_traffic_data() -> List[Dict]:
     Return mock traffic data for demo purposes when WireGuard is not available
     """
     import random
-    users = database.get_users()
+    users_result = database.get_users()
+    users = users_result.get('users', []) if isinstance(users_result, dict) else users_result
     
     if not users:
         return []
     
     mock_data = []
     for user in users:
+        user_dict = dict(user) if hasattr(user, 'keys') else {'id': user[0], 'username': user[1], 'public_key': user[3]}
         mock_data.append({
-            'public_key': user.get('public_key', f'mock_key_{user["id"]}'),
-            'user_id': user['id'],
-            'username': user['username'],
+            'public_key': user_dict.get('public_key', f'mock_key_{user_dict.get("id", 1)}'),
+            'user_id': user_dict.get('id', 1),
+            'username': user_dict.get('username', 'unknown'),
             'bytes_received': random.randint(1000000, 100000000),
             'bytes_sent': random.randint(500000, 50000000)
         })
@@ -133,8 +135,9 @@ async def get_traffic():
     peers = parse_wg_show()
     
     # Get users for mapping public_key to username
-    users = database.get_users()
-    user_map = {u['public_key']: u for u in users}
+    users_result = database.get_users()
+    users_list = users_result.get('users', []) if isinstance(users_result, dict) else users_result
+    user_map = {u.get('public_key', ''): u for u in users_list if u.get('public_key')}
     
     result = []
     for peer in peers:
