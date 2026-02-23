@@ -5,19 +5,19 @@ services:
     image: docker-wgvpn-admin:latest
     container_name: wgvpn-admin
     privileged: true
+    # 注意：WireGuard 實際端口是 10453
     ports:
-      - "5173:5173"
-      - "8000:8000"
-      - "51820:51820/udp"
+      - "5173:5173"   # 前端
+      - "8000:8000"   # 後端 API
+      - "10453:10453/udp"  # WireGuard UDP 端口
     volumes:
       - ./data:/app/backend/data
+      # 掛載現有 WireGuard 設定（唯讀）
       - /etc/wireguard:/etc/wireguard:ro
       - /dev/net:/dev/net:ro
     environment:
       - WG_INTERFACE=wg0
-      - VPN_SERVER_IP=你的伺服器IP
+      - WG_LISTEN_PORT=10453
+    # 網路模式需要 host 才能存取 WireGuard
+    network_mode: host
     restart: unless-stopped
-
-networks:
-  default:
-    name: wgvpn-network

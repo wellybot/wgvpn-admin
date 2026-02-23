@@ -1,19 +1,22 @@
 #!/bin/bash
-# WireGuard VPN Admin - Docker 自動啟動腳本 (後台執行)
+# WireGuard VPN Admin - Docker 自動啟動腳本
 
 echo "=========================================="
 echo "  WireGuard VPN Admin - 啟動服務"
 echo "=========================================="
 
-# 設定 WireGuard
-echo "[1/4] 設定 WireGuard..."
-ip link add dev wg0 type wireguard 2>/dev/null || true
-ip address add dev wg0 10.0.0.1/24 2>/dev/null || true
-ip link set up dev wg0 2>/dev/null || true
-echo "WireGuard 已設定"
+# 檢查是否已有 WireGuard 介面
+echo "[1/5] 檢查 WireGuard 狀態..."
+if ip link show wg0 > /dev/null 2>&1; then
+    echo "✅ WireGuard wg0 已存在"
+    ip link show wg0
+else
+    # 如果使用 host 網路模式，可能需要手動設定
+    echo "⚠️ WireGuard wg0 不存在，請確保主機上 WireGuard 正常運行"
+fi
 
 # 初始化資料庫
-echo "[2/4] 初始化資料庫..."
+echo "[2/5] 初始化資料庫..."
 cd /app/backend
 if [ ! -f wgvpn.db ]; then
     sqlite3 wgvpn.db < ../schema.sql
@@ -45,15 +48,22 @@ else:
 conn.close()
 PYEOF
 
-# 啟動 Backend (後台)
-echo "[3/4] 啟動 Backend..."
+# 從現有 WireGuard 設定匯入用戶（可選）
+echo "[3/5] 檢查現有用戶..."
+if [ -f /etc/wireguard/wg0.conf ]; then
+    echo "找到 /etc/wireguard/wg0.conf，可以匯入現有用戶"
+    # 這裡可以新增邏輯來匯入現有的 peers
+fi
+
+# 啟動 Backend
+echo "[4/5] 啟動 Backend..."
 cd /app/backend
 source venv/bin/activate
 nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /tmp/backend.log 2>&1 &
 echo "Backend PID: $!"
 
-# 啟動 Frontend (後台)
-echo "[4/4] 啟動 Frontend..."
+# 啟動 Frontend
+echo "[5/5] 啟動 Frontend..."
 cd /app/frontend
 nohup npm run dev -- --host 0.0.0.0 > /tmp/frontend.log 2>&1 &
 echo "Frontend PID: $!"
@@ -73,7 +83,7 @@ sleep 3
 curl -s http://localhost:8000/api/health > /dev/null && echo "✅ Backend 運作中" || echo "❌ Backend 失敗"
 curl -s http://localhost:5173 > /dev/null && echo "✅ Frontend 運作中" || echo "❌ Frontend 失敗"
 
-# 保持腳本運行 (用於 Docker)
+# 保持腳本運行
 echo ""
-echo "服務持續運作中... (Ctrl+C 停止)"
+echo "服務持續運作中..."
 tail -f /dev/null
