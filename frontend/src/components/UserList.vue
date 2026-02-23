@@ -355,7 +355,7 @@ export default {
       if (this.filterActive !== null) params.append('is_active', this.filterActive)
       
       try {
-        const response = await fetch(`http://localhost:8000/api/users?${params}`, {
+        const response = await fetch(`/api/users?${params}`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -415,7 +415,7 @@ export default {
       
       try {
         if (this.showCreateModal) {
-          const response = await fetch('http://localhost:8000/api/users', {
+          const response = await fetch('/api/users', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -429,7 +429,7 @@ export default {
             throw new Error(err.detail)
           }
         } else {
-          const response = await fetch(`http://localhost:8000/api/users/${this.selectedUser.id}`, {
+          const response = await fetch(`/api/users/${this.selectedUser.id}`, {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
@@ -463,7 +463,7 @@ export default {
       const token = localStorage.getItem('token')
       
       try {
-        const response = await fetch(`http://localhost:8000/api/users/${this.userToDelete.id}`, {
+        const response = await fetch(`/api/users/${this.userToDelete.id}`, {
           method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${token}`
@@ -488,7 +488,7 @@ export default {
       const token = localStorage.getItem('token')
       
       try {
-        const response = await fetch(`http://localhost:8000/api/users/${user.id}/toggle-active`, {
+        const response = await fetch(`/api/users/${user.id}/toggle-active`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`
@@ -518,7 +518,7 @@ export default {
       const token = localStorage.getItem('token')
       
       try {
-        const response = await fetch(`http://localhost:8000/api/users/${this.passwordUser.id}/change-password`, {
+        const response = await fetch(`/api/users/${this.passwordUser.id}/change-password`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -545,7 +545,7 @@ export default {
       const token = localStorage.getItem('token')
       
       try {
-        const response = await fetch(`http://localhost:8000/api/users/${user.id}/generate-config`, {
+        const response = await fetch(`/api/users/${user.id}/generate-config`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`
@@ -571,7 +571,7 @@ export default {
       const token = localStorage.getItem('token')
       
       try {
-        const response = await fetch(`http://localhost:8000/api/users/${user.id}/config`, {
+        const response = await fetch(`/api/users/${user.id}/config`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -601,7 +601,7 @@ export default {
       const token = localStorage.getItem('token')
       
       try {
-        const response = await fetch(`http://localhost:8000/api/users/${user.id}/qr`, {
+        const response = await fetch(`/api/users/${user.id}/qr`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }

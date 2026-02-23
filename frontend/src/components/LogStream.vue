@@ -115,7 +115,7 @@ export default {
         this.ws.close()
       }
       
-      const wsUrl = 'ws://localhost:8000/api/logs/stream'
+      const wsUrl = `ws://${window.location.host}/api/logs/stream`
       
       try {
         this.ws = new WebSocket(wsUrl)

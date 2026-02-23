@@ -45,6 +45,8 @@
 </template>
 
 <script>
+import { API } from '../api.js'
+
 export default {
   name: 'LoginPage',
   data() {
@@ -61,7 +63,7 @@ export default {
       this.error = ''
       
       try {
-        const response = await fetch('http://localhost:8000/api/auth/login', {
+        const response = await fetch(API.auth.login, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'

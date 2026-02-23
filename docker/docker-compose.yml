@@ -21,8 +21,7 @@ services:
       - WG_INTERFACE=wg0
     networks:
       - wgvpn-net
-    stdin_open: true
-    tty: true
+    command: bash /app/docker/start.sh
 
 volumes:
   wgvpn-data:

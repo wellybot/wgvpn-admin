@@ -16,7 +16,7 @@ app = FastAPI(title="WireGuard VPN Admin API")
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://192.168.1.220:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

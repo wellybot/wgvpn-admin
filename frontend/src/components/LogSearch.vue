@@ -175,7 +175,7 @@ export default {
   methods: {
     async fetchUsers() {
       try {
-        const response = await fetch('http://localhost:8000/api/users')
+        const response = await fetch('/api/users')
         const data = await response.json()
         this.users = data.users || []
       } catch (error) {
@@ -195,7 +195,7 @@ export default {
         params.append('limit', this.filters.limit)
         params.append('offset', this.offset)
         
-        const response = await fetch(`http://localhost:8000/api/logs/search?${params}`)
+        const response = await fetch(`/api/logs/search?${params}`)
         const data = await response.json()
         
         this.logs = data.logs || []
@@ -254,7 +254,7 @@ export default {
           this.exportProgress = Math.min(90, this.exportProgress + 10)
         }, 200)
         
-        const response = await fetch(`http://localhost:8000/api/logs/export?${params}`)
+        const response = await fetch(`/api/logs/export?${params}`)
         
         clearInterval(progressInterval)
         this.exportProgress = 100
