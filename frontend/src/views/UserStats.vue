@@ -209,6 +209,8 @@ export default {
       const otherTransfer = (this.statsData.summary.total_received || 0) + 
                            (this.statsData.summary.total_sent || 0) - totalTransfer;
       
+      if (!this.$refs.pieChart) return;
+      
       const ctx1 = this.$refs.pieChart.getContext('2d');
       this.pieChart = new Chart(ctx1, {
         type: 'doughnut',
@@ -235,6 +237,8 @@ export default {
       });
       
       // Bar chart - top users
+      if (!this.$refs.barChart) return;
+      
       const top10 = this.statsData.users.slice(0, 10);
       const ctx2 = this.$refs.barChart.getContext('2d');
       this.barChart = new Chart(ctx2, {

@@ -199,6 +199,7 @@ export default {
     renderTrendsChart() {
       if (this.trendsChart) this.trendsChart.destroy();
       if (!this.historicalData.length) return;
+      if (!this.$refs.trendsChart) return;
       
       const ctx = this.$refs.trendsChart.getContext('2d');
       this.trendsChart = new Chart(ctx, {

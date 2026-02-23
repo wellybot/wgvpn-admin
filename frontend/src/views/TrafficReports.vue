@@ -313,7 +313,7 @@ export default {
       if (this.hourlyChart) this.hourlyChart.destroy();
       
       // Daily trends chart
-      if (this.reportData.traffic.daily_trends) {
+      if (this.reportData.traffic.daily_trends && this.$refs.trendChart) {
         const ctx1 = this.$refs.trendChart.getContext('2d');
         this.trendChart = new Chart(ctx1, {
           type: 'line',
@@ -349,7 +349,7 @@ export default {
       }
       
       // Hourly distribution chart
-      if (this.reportData.traffic.hourly_distribution) {
+      if (this.reportData.traffic.hourly_distribution && this.$refs.hourlyChart) {
         const ctx2 = this.$refs.hourlyChart.getContext('2d');
         this.hourlyChart = new Chart(ctx2, {
           type: 'bar',
