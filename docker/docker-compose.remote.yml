@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  wgvpn-admin:
+    image: docker-wgvpn-admin:latest
+    container_name: wgvpn-admin
+    privileged: true
+    ports:
+      - "5173:5173"
+      - "8000:8000"
+      - "51820:51820/udp"
+    volumes:
+      - ./data:/app/backend/data
+      - /etc/wireguard:/etc/wireguard:ro
+      - /dev/net:/dev/net:ro
+    environment:
+      - WG_INTERFACE=wg0
+      - VPN_SERVER_IP=你的伺服器IP
+    restart: unless-stopped
+
+networks:
+  default:
+    name: wgvpn-network
