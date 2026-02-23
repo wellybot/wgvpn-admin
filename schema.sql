@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     public_key TEXT,
     private_key TEXT,
+    allowed_ips TEXT DEFAULT '10.0.0.2/32',
     is_active BOOLEAN DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
